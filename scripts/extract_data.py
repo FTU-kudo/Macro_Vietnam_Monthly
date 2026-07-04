@@ -14,10 +14,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# ── FIX: đổi từ anthropic sang google-generativeai ──────────────
-import google.generativeai as genai
+# Đổi sang google-genai (package mới chính thức, generativeai đã deprecated)
+from google import genai
+from google.genai import types
 
-# ── FIX: đổi model name ─────────────────────────────────────────
 MODEL = "gemini-2.0-flash"
 MAX_TOKENS = 8000
 
@@ -180,29 +180,26 @@ Trả về JSON (không có markdown, không có backtick):"""
 # ─────────────────────────────────────────────────────────────────
 
 def extract_with_gemini(user_prompt: str) -> dict:
-    """Gọi Gemini API để extract data, trả về parsed JSON."""
+    """Gọi Gemini API (google-genai) để extract data, trả về parsed JSON."""
 
-    # FIX: đọc GEMINI_API_KEY thay vì ANTHROPIC_API_KEY
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+    # Dùng google-genai Client-based API mới
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
     print(f"  🤖 Calling Gemini API ({MODEL})...")
 
-    # FIX: dùng GenerativeModel với system_instruction
-    model = genai.GenerativeModel(
-        model_name=MODEL,
-        system_instruction=SYSTEM_PROMPT,
-        generation_config=genai.GenerationConfig(
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=user_prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
             max_output_tokens=MAX_TOKENS,
-            temperature=0.1,       # thấp để output ổn định, ít hallucinate
-            response_mime_type="application/json",  # force JSON output
+            temperature=0.1,
+            response_mime_type="application/json",
         ),
     )
-
-    # FIX: dùng generate_content thay vì messages.create
-    response = model.generate_content(user_prompt)
     raw_text = response.text.strip()
 
-    # Làm sạch phòng hờ (bỏ ```json nếu có dù đã force JSON mime)
+    # Làm sạch phòng hờ (bỏ ```json nếu có)
     raw_text = re.sub(r"^```json\s*", "", raw_text)
     raw_text = re.sub(r"```\s*$", "", raw_text).strip()
 
