@@ -1,41 +1,31 @@
 name: 📊 VN Macro Monthly Report
 
-# ============================================================
-# LỊCH CHẠY: Ngày 20 mỗi tháng lúc 9:00 UTC (16:00 ICT)
-# Chọn ngày 20 vì đến lúc đó hầu hết 5 nguồn đã publish:
-#   - S&P PMI:   ngày 1-3 (tháng M+1)
-#   - NSO:       ngày 27-30 (tháng M)
-#   - VBMA:      tuần cuối tháng M
-#   - VNBA:      tuần 2-3 tháng M+1
-#   - Customs:   khoảng 15 tháng M+1
-# ============================================================
+# Lượt 1: Ngày 3 — PMI + NSO + VBMA thường đã có
+# Lượt 2: Ngày 15 — Customs + VNBA thường đã có
 on:
   schedule:
-    # Lượt 1: Ngày 3 lúc 9:00 ICT — PMI + NSO + VBMA thường đã có
     - cron: '0 2 3 * *'
-    # Lượt 2: Ngày 15 lúc 9:00 ICT — Customs + VNBA thường đã có
     - cron: '0 2 15 * *'
   workflow_dispatch:
     inputs:
       report_month:
         description: 'YYYY-MM (bỏ trống = tháng trước)'
         required: false
+        default: ''
       force_partial:
         description: 'Chạy khi thiếu nguồn? (true/false)'
         required: false
         default: 'false'
       skip_email:
+        description: 'Bỏ qua gửi email? (true/false)'
         required: false
         default: 'false'
 
 permissions:
-  contents: write   # để commit report vào repo
-  pages: write      # nếu dùng GitHub Pages
+  contents: write
+  pages: write
 
 jobs:
-  # ============================================================
-  # JOB 1: FETCH + EXTRACT + RENDER
-  # ============================================================
   generate-report:
     name: 🔄 Generate VN Macro Report
     runs-on: ubuntu-latest
@@ -47,41 +37,62 @@ jobs:
       sources_found: ${{ steps.preflight.outputs.sources_found }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
 
+      # ── FIX: set-month TRƯỚC check-existing ──────────────────────
+      # Phải xác định tháng trước để check-existing dùng đúng tháng,
+      # kể cả khi trigger thủ công với report_month khác tháng trước.
+      - name: Determine report month
+        id: set-month
+        run: |
+          if [ -n "${{ github.event.inputs.report_month }}" ]; then
+            MONTH="${{ github.event.inputs.report_month }}"
+          else
+            MONTH=$(date -d '1 month ago' +'%Y-%m')
+          fi
+          echo "report_month=$MONTH" >> $GITHUB_OUTPUT
+          echo "REPORT_MONTH=$MONTH" >> $GITHUB_ENV
+          echo "📅 Report month: $MONTH"
+
+      # ── Bỏ qua nếu đã có báo cáo đầy đủ 5/5 nguồn ──────────────
       - name: Check if full report already exists
         id: check-existing
         run: |
-          MONTH=$(date -d '1 month ago' +'%Y-%m')
+          MONTH="${{ steps.set-month.outputs.report_month }}"
           REPORT="vn-macro-monthly/$MONTH/report.json"
-          
+
           if [ -f "$REPORT" ]; then
             SOURCES=$(python3 -c "
           import json
           d = json.load(open('$REPORT'))
           print(d.get('_meta', {}).get('sources_available', 0))
           " 2>/dev/null || echo "0")
-            
+
             if [ "$SOURCES" = "5" ]; then
               echo "skip=true" >> $GITHUB_OUTPUT
               echo "✅ Báo cáo đầy đủ ($SOURCES/5) đã có cho $MONTH — bỏ qua"
             else
               echo "skip=false" >> $GITHUB_OUTPUT
-              echo "⚠️ Báo cáo cũ chỉ $SOURCES/5 nguồn — chạy lại để bổ sung"
+              echo "⚠️  Báo cáo cũ chỉ $SOURCES/5 nguồn — chạy lại để bổ sung"
             fi
           else
             echo "skip=false" >> $GITHUB_OUTPUT
             echo "📋 Chưa có báo cáo tháng $MONTH — bắt đầu tạo"
           fi
 
-      # Tất cả steps sau đây chỉ chạy khi skip=false
-      - name: Set up Python
+      # ── FIX: tất cả steps dưới đây đều có if:skip ───────────────
+      - name: Set up Python 3.11
         if: steps.check-existing.outputs.skip != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Cache pip packages
+        if: steps.check-existing.outputs.skip != 'true'
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
@@ -89,29 +100,17 @@ jobs:
           restore-keys: ${{ runner.os }}-pip-
 
       - name: Install system deps (poppler cho pdftotext)
+        if: steps.check-existing.outputs.skip != 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y poppler-utils
 
       - name: Install Python dependencies
+        if: steps.check-existing.outputs.skip != 'true'
         run: pip install -r requirements.txt --quiet
 
-      # ------ 1. XÁC ĐỊNH THÁNG BÁO CÁO ------
-      - name: Determine report month
-        id: set-month
-        run: |
-          if [ -n "${{ github.event.inputs.report_month }}" ]; then
-            MONTH="${{ github.event.inputs.report_month }}"
-          else
-            # Mặc định: tháng trước
-            MONTH=$(date -d '1 month ago' +'%Y-%m')
-          fi
-          echo "report_month=$MONTH" >> $GITHUB_OUTPUT
-          echo "REPORT_MONTH=$MONTH" >> $GITHUB_ENV
-          echo "📅 Report month: $MONTH"
-
-      # ------ 2. PRE-FLIGHT CHECK ------
-      - name: Pre-flight check (verify 5 sources)
+      - name: Pre-flight check (verify sources)
+        if: steps.check-existing.outputs.skip != 'true'
         id: preflight
         env:
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
@@ -122,7 +121,6 @@ jobs:
             --force-partial "$FORCE_PARTIAL" \
             --output preflight_result.json
 
-          # Đọc kết quả preflight
           STATUS=$(python -c "import json; d=json.load(open('preflight_result.json')); print(d['status'])")
           FOUND=$(python -c "import json; d=json.load(open('preflight_result.json')); print(d['sources_found'])")
 
@@ -130,14 +128,13 @@ jobs:
           echo "sources_found=$FOUND" >> $GITHUB_OUTPUT
           echo "🔍 Preflight: $STATUS ($FOUND/5 nguồn)"
 
-          # Dừng nếu FAIL và không override
           if [ "$STATUS" = "FAIL" ]; then
             echo "❌ Preflight FAIL - không đủ nguồn"
             exit 1
           fi
 
-      # ------ 3. FETCH & CACHE 5 NGUỒN ------
       - name: Fetch and cache sources
+        if: steps.check-existing.outputs.skip != 'true'
         env:
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
         run: |
@@ -146,8 +143,9 @@ jobs:
             --cache-dir "vn-macro-monthly/$REPORT_MONTH/sources_cache"
           echo "✅ Sources cached"
 
-      # ------ 4. EXTRACT DATA (Claude API) ------
-      - name: Extract 41 indicators via Claude API
+      # ── FIX: đổi từ ANTHROPIC_API_KEY → GEMINI_API_KEY ──────────
+      - name: Extract 41 indicators via Gemini API
+        if: steps.check-existing.outputs.skip != 'true'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
@@ -158,8 +156,8 @@ jobs:
             --output "vn-macro-monthly/$REPORT_MONTH/report.json"
           echo "✅ report.json generated"
 
-      # ------ 5. UPDATE HISTORY ------
       - name: Update history.json
+        if: steps.check-existing.outputs.skip != 'true'
         env:
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
         run: |
@@ -169,8 +167,8 @@ jobs:
             --history "vn-macro-monthly/history.json"
           echo "✅ history.json updated"
 
-      # ------ 6. RENDER HTML DASHBOARD ------
       - name: Render HTML report
+        if: steps.check-existing.outputs.skip != 'true'
         env:
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
         run: |
@@ -182,14 +180,12 @@ jobs:
             --output "vn-macro-monthly/$REPORT_MONTH/report.html"
           echo "✅ report.html rendered"
 
-      # ------ 7. COMMIT VÀO REPO ------
       - name: Commit report to repository
+        if: steps.check-existing.outputs.skip != 'true'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "VN Macro Bot"
-
           git add vn-macro-monthly/
-
           if git diff --staged --quiet; then
             echo "⚠️ No changes to commit"
           else
@@ -198,17 +194,14 @@ jobs:
             echo "✅ Committed and pushed"
           fi
 
-      # ------ 8. UPLOAD ARTIFACT ------
       - name: Upload report as artifact
+        if: steps.check-existing.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: vn-macro-report-${{ env.REPORT_MONTH }}
           path: vn-macro-monthly/${{ env.REPORT_MONTH }}/report.html
           retention-days: 90
 
-  # ============================================================
-  # JOB 2: GỬI EMAIL THÔNG BÁO
-  # ============================================================
   notify:
     name: 📧 Send Email Notification
     runs-on: ubuntu-latest
@@ -216,16 +209,13 @@ jobs:
     if: always() && github.event.inputs.skip_email != 'true'
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt --quiet
+      - run: pip install -r requirements.txt --quiet
 
       - name: Send SUCCESS email
         if: needs.generate-report.result == 'success'
@@ -243,7 +233,7 @@ jobs:
             --sources "$SOURCES_FOUND" \
             --repo-url "$REPO_URL"
 
-      - name: Send FAILURE email (preflight fail)
+      - name: Send FAILURE email
         if: needs.generate-report.result == 'failure'
         env:
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
