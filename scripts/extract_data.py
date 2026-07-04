@@ -18,7 +18,8 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 
-MODEL = "gemini-2.0-flash"
+# gemini-3.1-flash-lite: còn đủ quota (38/500 RPD), nhanh, phù hợp cho batch extract
+MODEL = "gemini-3.1-flash-lite"
 MAX_TOKENS = 8000
 
 # ─────────────────────────────────────────────────────────────────
