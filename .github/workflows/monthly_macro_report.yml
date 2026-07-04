@@ -252,9 +252,9 @@ jobs:
       - name: Send SUCCESS email
         if: needs.generate-report.result == 'success'
         env:
-          EMAIL_USER: ${{ secrets.EMAIL_USER }}
-          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_USER: ${{ secrets.GMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.RECIPIENT_EMAILS }}
           REPORT_MONTH: ${{ needs.generate-report.outputs.report_month }}
           SOURCES_FOUND: ${{ needs.generate-report.outputs.sources_found }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
@@ -269,9 +269,9 @@ jobs:
       - name: Send FAILURE email
         if: needs.generate-report.result == 'failure'
         env:
-          EMAIL_USER: ${{ secrets.EMAIL_USER }}
-          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_USER: ${{ secrets.GMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.RECIPIENT_EMAILS }}
           REPORT_MONTH: ${{ needs.generate-report.outputs.report_month }}
           SOURCES_FOUND: ${{ needs.generate-report.outputs.sources_found }}
         run: |
