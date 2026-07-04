@@ -150,10 +150,12 @@ jobs:
         if: steps.check-existing.outputs.skip != 'true'
         env:
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
+          FORCE_PARTIAL: ${{ github.event.inputs.force_partial || 'false' }}
         run: |
           python scripts/fetch_sources.py \
             --month "$REPORT_MONTH" \
-            --cache-dir "vn-macro-monthly/$REPORT_MONTH/sources_cache"
+            --cache-dir "vn-macro-monthly/$REPORT_MONTH/sources_cache" \
+            --force-partial "$FORCE_PARTIAL"
           echo "✅ Sources cached"
 
       # ── FIX: đổi từ ANTHROPIC_API_KEY → GEMINI_API_KEY ──────────

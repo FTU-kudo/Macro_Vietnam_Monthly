@@ -414,7 +414,10 @@ def main():
     parser = argparse.ArgumentParser(description="Fetch VN Macro sources")
     parser.add_argument("--month", required=True, help="YYYY-MM")
     parser.add_argument("--cache-dir", required=True, help="Output directory for cached files")
+    parser.add_argument("--force-partial", default="false",
+                        help="Tiếp tục dù thiếu nguồn (true/false)")
     args = parser.parse_args()
+    force_partial = args.force_partial.lower() == "true"
 
     year, month = parse_month(args.month)
     cache_dir = Path(args.cache_dir)
@@ -452,7 +455,12 @@ def main():
 
     if failed:
         print(f"⚠️  Thiếu: {', '.join(failed)}")
-        sys.exit(1)
+        if force_partial:
+            print("   ℹ️  force_partial=true → tiếp tục với nguồn đã có")
+            sys.exit(0)
+        else:
+            print("   💡 Dùng force_partial=true để tiếp tục khi thiếu nguồn")
+            sys.exit(1)
     else:
         print("✅ Tất cả nguồn đã được cache")
 
