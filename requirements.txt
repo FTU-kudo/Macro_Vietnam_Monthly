@@ -1,0 +1,15 @@
+# VN Macro Monthly — Python Dependencies
+
+# HTTP & HTML parsing
+requests>=2.31.0
+beautifulsoup4>=4.12.2
+lxml>=5.1.0
+
+# PDF processing
+pdfplumber>=0.10.3
+
+# FIX: đổi anthropic → google-generativeai
+google-generativeai>=0.8.0
+
+# Utilities
+python-dotenv>=1.0.0
