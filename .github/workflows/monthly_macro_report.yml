@@ -16,6 +16,10 @@ on:
         description: 'Chạy khi thiếu nguồn? (true/false)'
         required: false
         default: 'false'
+      skip_preflight:
+        description: 'Bỏ qua preflight check? (true/false) — dùng khi biết chắc data có sẵn'
+        required: false
+        default: 'false'
       skip_email:
         description: 'Bỏ qua gửi email? (true/false)'
         required: false
@@ -115,7 +119,16 @@ jobs:
         env:
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
           FORCE_PARTIAL: ${{ github.event.inputs.force_partial || 'false' }}
+          SKIP_PREFLIGHT: ${{ github.event.inputs.skip_preflight || 'false' }}
         run: |
+          # Nếu skip_preflight=true → bỏ qua check, tiến hành luôn
+          if [ "$SKIP_PREFLIGHT" = "true" ]; then
+            echo "⏭️  skip_preflight=true — bỏ qua pre-flight check"
+            echo "status=PARTIAL" >> $GITHUB_OUTPUT
+            echo "sources_found=0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           python scripts/preflight_check.py \
             --month "$REPORT_MONTH" \
             --force-partial "$FORCE_PARTIAL" \
@@ -129,7 +142,7 @@ jobs:
           echo "🔍 Preflight: $STATUS ($FOUND/5 nguồn)"
 
           if [ "$STATUS" = "FAIL" ]; then
-            echo "❌ Preflight FAIL - không đủ nguồn"
+            echo "❌ Preflight FAIL — dùng force_partial=true hoặc skip_preflight=true để override"
             exit 1
           fi
 
