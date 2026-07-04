@@ -195,6 +195,23 @@ jobs:
             --output "vn-macro-monthly/$REPORT_MONTH/report.html"
           echo "✅ report.html rendered"
 
+      - name: Install Playwright Chromium (for PDF export)
+        if: steps.check-existing.outputs.skip != 'true'
+        run: |
+          pip install playwright --quiet
+          playwright install chromium --with-deps
+          echo "✅ Playwright + Chromium ready"
+
+      - name: Export PDF from HTML report
+        if: steps.check-existing.outputs.skip != 'true'
+        env:
+          REPORT_MONTH: ${{ env.REPORT_MONTH }}
+        run: |
+          python scripts/html_to_pdf.py \
+            --html "vn-macro-monthly/$REPORT_MONTH/report.html" \
+            --output "vn-macro-monthly/$REPORT_MONTH/report.pdf"
+          echo "✅ PDF exported"
+
       - name: Commit report to repository
         if: steps.check-existing.outputs.skip != 'true'
         run: |
@@ -246,7 +263,8 @@ jobs:
             --status success \
             --month "$REPORT_MONTH" \
             --sources "$SOURCES_FOUND" \
-            --repo-url "$REPO_URL"
+            --repo-url "$REPO_URL" \
+            --pdf-path "vn-macro-monthly/$REPORT_MONTH/report.pdf"
 
       - name: Send FAILURE email
         if: needs.generate-report.result == 'failure'
