@@ -26,6 +26,10 @@ on:
         description: 'Bỏ qua gửi email? (true/false)'
         required: false
         default: 'false'
+      is_cron:
+        description: 'Kích hoạt từ hệ thống cron bên ngoài? (true/false)'
+        required: false
+        default: 'false'
 
 permissions:
   contents: write
@@ -130,7 +134,7 @@ jobs:
         id: preflight
         env:
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
-          FORCE_PARTIAL: ${{ github.event_name == 'schedule' && 'true' || (github.event.inputs.force_partial || 'false') }}
+          FORCE_PARTIAL: ${{ (github.event_name == 'schedule' || github.event.inputs.is_cron == 'true') && 'true' || (github.event.inputs.force_partial || 'false') }}
           SKIP_PREFLIGHT: ${{ github.event.inputs.skip_preflight || 'false' }}
         run: |
           # Nếu skip_preflight=true → bỏ qua check, tiến hành luôn
@@ -163,7 +167,7 @@ jobs:
         id: fetch-sources
         env:
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
-          FORCE_PARTIAL: ${{ github.event_name == 'schedule' && 'true' || (github.event.inputs.force_partial || 'false') }}
+          FORCE_PARTIAL: ${{ (github.event_name == 'schedule' || github.event.inputs.is_cron == 'true') && 'true' || (github.event.inputs.force_partial || 'false') }}
         run: |
           python scripts/fetch_sources.py \
             --month "$REPORT_MONTH" \
@@ -184,7 +188,7 @@ jobs:
         run: |
           EXISTING="${{ steps.check-existing.outputs.existing_sources }}"
           FETCHED="${{ steps.fetch-sources.outputs.fetched_sources }}"
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$EXISTING" -gt 0 ] && [ "$FETCHED" -le "$EXISTING" ]; then
+          if [ "${{ github.event_name }}" = "schedule" -o "${{ github.event.inputs.is_cron }}" = "true" ] && [ "$EXISTING" -gt 0 ] && [ "$FETCHED" -le "$EXISTING" ]; then
             echo "skip_rest=true" >> $GITHUB_OUTPUT
             echo "⏭️  Lịch chạy tự động (cron): Số nguồn tìm thấy ($FETCHED/5) không tăng so với báo cáo cũ ($EXISTING/5) — không cần chạy lại AI hay gửi lại email."
           else
