@@ -49,7 +49,9 @@ def build_success_email(
 
     subject = f"📊 [VN Macro] Báo cáo {vi_month} {year} · {sources}/5 nguồn"
 
-    report_url = f"{repo_url}/blob/main/vn-macro-monthly/{month}/report.html"
+    # Dùng htmlpreview.github.io để render HTML (tránh 404 do GitHub blob viewer)
+    raw_url = f"{repo_url}/raw/main/vn-macro-monthly/{month}/report.html"
+    report_url = f"https://htmlpreview.github.io/?{raw_url}"
     pdf_note = (
         '<p style="color:#1e293b;font-size:13px;margin:12px 0 0;">'
         '📎 <strong>File PDF đính kèm</strong> trong email này để đọc offline.</p>'

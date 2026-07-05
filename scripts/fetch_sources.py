@@ -217,48 +217,131 @@ def fetch_customs(year: int, month: int, cache_dir: Path) -> dict:
     output_file = cache_dir / f"customs_{year}-{month:02d}.txt"
     vi_month = VI_MONTHS[month]
 
+    # Suppress SSL warnings cho các site chính phủ VN dùng SSL cũ
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    def get_safe(url, **kwargs):
+        """requests.get với fallback verify=False nếu SSLError."""
+        try:
+            return requests.get(url, headers=HEADERS, timeout=TIMEOUT, **kwargs)
+        except requests.exceptions.SSLError:
+            return requests.get(url, headers=HEADERS, timeout=TIMEOUT, verify=False, **kwargs)
+        except Exception:
+            return None
+
     # Trang thống kê hải quan
     customs_url = "https://www.customs.gov.vn/index.jsp?pageIndex=1&category=27&cid=30"
     try:
-        r = requests.get(customs_url, headers=HEADERS, timeout=TIMEOUT)
-        if r.status_code == 200:
+        r = get_safe(customs_url)
+        if r and r.status_code == 200:
             soup = BeautifulSoup(r.text, "html.parser")
-            # Tìm link bài viết tháng M
+            # Tìm link bài viết tháng M — thử nhiều pattern
             for a in soup.find_all("a", href=True):
                 text = a.get_text(strip=True).lower()
                 href = a["href"]
-                if vi_month in text and (str(year) in text or str(year) in href):
+                if (
+                    (vi_month in text or f"{month:02d}/{year}" in text or f"thang-{month}" in href)
+                    and (str(year) in text or str(year) in href)
+                ):
                     article_url = href if href.startswith("http") else f"https://www.customs.gov.vn{href}"
                     try:
-                        ar = requests.get(article_url, headers=HEADERS, timeout=TIMEOUT)
-                        if ar.status_code == 200:
-                            # Extract text
+                        ar = get_safe(article_url)
+                        if ar and ar.status_code == 200:
                             art_soup = BeautifulSoup(ar.text, "html.parser")
                             text_content = art_soup.get_text(separator="\n", strip=True)
-                            output_file.write_text(text_content, encoding="utf-8")
-                            print(f"     ✅ Customs → {output_file.name} ({len(text_content):,} chars)")
-                            return {
-                                "source": source, "status": "OK",
-                                "url": article_url, "file": str(output_file),
-                            }
+                            if len(text_content) > 200:
+                                output_file.write_text(text_content, encoding="utf-8")
+                                print(f"     ✅ Customs → {output_file.name} ({len(text_content):,} chars)")
+                                return {
+                                    "source": source, "status": "OK",
+                                    "url": article_url, "file": str(output_file),
+                                }
                     except Exception:
                         continue
     except Exception:
         pass
 
-    # Fallback: haiquanonline.com.vn
+    # Fallback 1: trang danh sách hải quan — lấy bài đầu tiên
+    try:
+        r = get_safe(customs_url)
+        if r and r.status_code == 200:
+            soup = BeautifulSoup(r.text, "html.parser")
+            # Lấy link bài đầu tiên trong danh sách
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                text = a.get_text(strip=True).lower()
+                if ("xuat-nhap-khau" in href.lower() or "xnk" in href.lower()
+                        or "xuat nhap khau" in text or "xuất nhập khẩu" in text):
+                    article_url = href if href.startswith("http") else f"https://www.customs.gov.vn{href}"
+                    try:
+                        ar = get_safe(article_url)
+                        if ar and ar.status_code == 200:
+                            art_soup = BeautifulSoup(ar.text, "html.parser")
+                            text_content = art_soup.get_text(separator="\n", strip=True)
+                            if len(text_content) > 200:
+                                output_file.write_text(text_content, encoding="utf-8")
+                                print(f"     ⚠️  Customs (article fallback) → {output_file.name}")
+                                return {
+                                    "source": source, "status": "OK_FALLBACK",
+                                    "url": article_url, "file": str(output_file),
+                                }
+                    except Exception:
+                        continue
+    except Exception:
+        pass
+
+    # Fallback 2: haiquanonline.com.vn
     try:
         fallback_url = f"https://haiquanonline.com.vn/?s=xuất+nhập+khẩu+{vi_month}+{year}"
         r = requests.get(fallback_url, headers=HEADERS, timeout=TIMEOUT)
-        if r.status_code == 200:
+        if r and r.status_code == 200:
+            soup = BeautifulSoup(r.text, "html.parser")
+            # Tìm link bài viết cụ thể
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                a_text = a.get_text(strip=True).lower()
+                if (str(year) in href or str(year) in a_text) and "xuat-nhap" in href.lower():
+                    try:
+                        ar = requests.get(href, headers=HEADERS, timeout=TIMEOUT)
+                        if ar.status_code == 200:
+                            art_soup = BeautifulSoup(ar.text, "html.parser")
+                            text_content = art_soup.get_text(separator="\n", strip=True)
+                            if len(text_content) > 300:
+                                output_file.write_text(text_content, encoding="utf-8")
+                                print(f"     ⚠️  Customs (haiquanonline article) → {output_file.name}")
+                                return {
+                                    "source": source, "status": "OK_FALLBACK",
+                                    "url": href, "file": str(output_file),
+                                }
+                    except Exception:
+                        continue
+            # Fallback: lấy text trang search
+            text_content = soup.get_text(separator="\n", strip=True)
+            if len(text_content) > 300:
+                output_file.write_text(text_content, encoding="utf-8")
+                print(f"     ⚠️  Customs (haiquanonline search) → {output_file.name}")
+                return {
+                    "source": source, "status": "OK_FALLBACK",
+                    "url": fallback_url, "file": str(output_file),
+                }
+    except Exception:
+        pass
+
+    # Fallback 3: tìm trên VnEconomy
+    try:
+        vne_url = f"https://vneconomy.vn/search/?q=hải+quan+xuất+nhập+khẩu+{vi_month}+{year}"
+        r = requests.get(vne_url, headers=HEADERS, timeout=TIMEOUT)
+        if r and r.status_code == 200:
             soup = BeautifulSoup(r.text, "html.parser")
             text_content = soup.get_text(separator="\n", strip=True)
-            output_file.write_text(text_content, encoding="utf-8")
-            print(f"     ⚠️  Customs (haiquanonline) → {output_file.name}")
-            return {
-                "source": source, "status": "OK_FALLBACK",
-                "url": fallback_url, "file": str(output_file),
-            }
+            if len(text_content) > 300:
+                output_file.write_text(text_content, encoding="utf-8")
+                print(f"     ⚠️  Customs (VnEconomy fallback) → {output_file.name}")
+                return {
+                    "source": source, "status": "OK_FALLBACK",
+                    "url": vne_url, "file": str(output_file),
+                }
     except Exception:
         pass
 
@@ -268,75 +351,107 @@ def fetch_customs(year: int, month: int, cache_dir: Path) -> dict:
 def fetch_vbma(year: int, month: int, cache_dir: Path) -> dict:
     """
     VBMA: PDF báo cáo tuần TTTP (tuần cuối tháng M).
-    URL pattern: vbma.org.vn/storage/reports/[MonYYYY]/[dates] BAO CAO TUAN TTTP.pdf
+    Strategy mới: scrape trang bao-cao để lấy link thực tế, sau đó tải PDF.
     """
     source = "VBMA"
     en_abbr = EN_MONTHS_ABBR[month]  # "May", "Jun"...
     pdf_out = cache_dir / f"vbma_{year}-{month:02d}.pdf"
     txt_out = cache_dir / f"vbma_{year}-{month:02d}.txt"
 
-    # Thử các tuần cuối tháng (ngày 22-31)
-    week_ranges = [
-        (25, 29), (24, 28), (26, 30), (27, 31), (23, 27), (22, 26),
+    # ── Strategy 1: Scrape trang báo cáo để lấy link PDF mới nhất ──────
+    report_pages = [
+        "https://vbma.org.vn/bao-cao",
+        "https://vbma.org.vn/bao-cao?page=1",
     ]
-    
-    for start, end in week_ranges:
-        # Clip end day nếu > ngày cuối tháng
-        import calendar
-        last_day = calendar.monthrange(year, month)[1]
-        end = min(end, last_day)
-
-        pdf_url = (
-            f"https://vbma.org.vn/storage/reports/"
-            f"{en_abbr}{year}/"
-            f"{start:02d}{month:02d}{year}-{end:02d}{month:02d}{year}"
-            f"%20%20BAO%20CAO%20TUAN%20TTTP.pdf"
-        )
+    for page_url in report_pages:
         try:
-            r = requests.get(pdf_url, headers=HEADERS, timeout=TIMEOUT, stream=True)
-            if r.status_code == 200 and r.headers.get("content-type", "").startswith("application/pdf"):
-                with open(pdf_out, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                size = pdf_out.stat().st_size
-                print(f"     ✅ VBMA PDF → {pdf_out.name} ({size:,} bytes) [{start}-{end}/{month}]")
-
-                # Convert PDF → text
-                if pdf_to_text(pdf_out, txt_out):
-                    return {
-                        "source": source, "status": "OK",
-                        "url": pdf_url,
-                        "pdf_file": str(pdf_out),
-                        "txt_file": str(txt_out),
-                        "week": f"{start:02d}-{end:02d}/{month:02d}",
-                    }
-        except Exception:
-            continue
-
-    # Fallback: trang báo cáo VBMA, lấy link mới nhất
-    try:
-        r = requests.get("https://vbma.org.vn/bao-cao", headers=HEADERS, timeout=TIMEOUT)
-        if r.status_code == 200:
+            r = requests.get(page_url, headers=HEADERS, timeout=TIMEOUT)
+            if r.status_code != 200:
+                continue
             soup = BeautifulSoup(r.text, "html.parser")
             for a in soup.find_all("a", href=True):
                 href = a["href"]
-                if "BAO_CAO_TUAN" in href.upper() or "TTTP" in href.upper():
+                href_up = href.upper()
+                link_text = a.get_text(strip=True).upper()
+                # Tìm link có chứa tên tháng + năm hoặc từ khoá TTTP/BAO CAO TUAN
+                is_report = (
+                    "TTTP" in href_up or "BAO_CAO_TUAN" in href_up or "BAO CAO TUAN" in href_up
+                    or "TTTP" in link_text or "BÁO CÁO TUẦN" in link_text
+                )
+                is_month = str(year) in href or en_abbr.upper() in href_up
+                if is_report and ".PDF" in href_up:
                     pdf_url = href if href.startswith("http") else f"https://vbma.org.vn{href}"
-                    r2 = requests.get(pdf_url, headers=HEADERS, timeout=TIMEOUT, stream=True)
-                    if r2.status_code == 200:
-                        with open(pdf_out, "wb") as f:
-                            for chunk in r2.iter_content(chunk_size=8192):
-                                f.write(chunk)
-                        pdf_to_text(pdf_out, txt_out)
-                        print(f"     ⚠️  VBMA (fallback page scrape) → {pdf_out.name}")
+                    try:
+                        r2 = requests.get(pdf_url, headers=HEADERS, timeout=TIMEOUT, stream=True)
+                        if r2.status_code == 200 and "pdf" in r2.headers.get("content-type", "").lower():
+                            with open(pdf_out, "wb") as f:
+                                for chunk in r2.iter_content(chunk_size=8192):
+                                    f.write(chunk)
+                            size = pdf_out.stat().st_size
+                            if size > 1024:  # ít nhất 1KB
+                                print(f"     ✅ VBMA (scraped) → {pdf_out.name} ({size:,} bytes)")
+                                if pdf_to_text(pdf_out, txt_out):
+                                    return {
+                                        "source": source, "status": "OK",
+                                        "url": pdf_url,
+                                        "pdf_file": str(pdf_out),
+                                        "txt_file": str(txt_out),
+                                    }
+                    except Exception:
+                        continue
+        except Exception:
+            continue
+
+    # ── Strategy 2: Thử URL pattern cứng (các biến thể ngày cuối tháng) ──
+    import calendar
+    week_ranges = [
+        (25, 29), (24, 28), (26, 30), (27, 31), (23, 27), (22, 26), (28, 31),
+    ]
+    # Thử nhiều biến thể tên file (1 space, 2 space, chữ thường)
+    url_templates = [
+        lambda s, e: (
+            f"https://vbma.org.vn/storage/reports/"
+            f"{en_abbr}{year}/"
+            f"{s:02d}{month:02d}{year}-{e:02d}{month:02d}{year}"
+            f"%20%20BAO%20CAO%20TUAN%20TTTP.pdf"
+        ),
+        lambda s, e: (
+            f"https://vbma.org.vn/storage/reports/"
+            f"{en_abbr}{year}/"
+            f"{s:02d}{month:02d}{year}-{e:02d}{month:02d}{year}"
+            f"%20BAO%20CAO%20TUAN%20TTTP.pdf"
+        ),
+        lambda s, e: (
+            f"https://vbma.org.vn/storage/reports/"
+            f"{en_abbr}{year}/"
+            f"{s:02d}{month:02d}{year}-{e:02d}{month:02d}{year}"
+            f"_BAO_CAO_TUAN_TTTP.pdf"
+        ),
+    ]
+    for start, end in week_ranges:
+        last_day = calendar.monthrange(year, month)[1]
+        end = min(end, last_day)
+        for tmpl in url_templates:
+            pdf_url = tmpl(start, end)
+            try:
+                r = requests.get(pdf_url, headers=HEADERS, timeout=TIMEOUT, stream=True)
+                ct = r.headers.get("content-type", "")
+                if r.status_code == 200 and "pdf" in ct.lower():
+                    with open(pdf_out, "wb") as f:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    size = pdf_out.stat().st_size
+                    print(f"     ✅ VBMA PDF → {pdf_out.name} ({size:,} bytes) [{start}-{end}/{month}]")
+                    if pdf_to_text(pdf_out, txt_out):
                         return {
-                            "source": source, "status": "OK_FALLBACK",
+                            "source": source, "status": "OK",
                             "url": pdf_url,
                             "pdf_file": str(pdf_out),
                             "txt_file": str(txt_out),
+                            "week": f"{start:02d}-{end:02d}/{month:02d}",
                         }
-    except Exception:
-        pass
+            except Exception:
+                continue
 
     return {"source": source, "status": "FAIL", "error": "Không tải được VBMA PDF"}
 
@@ -351,7 +466,61 @@ def fetch_vnba(year: int, month: int, cache_dir: Path) -> dict:
     pdf_out = cache_dir / f"vnba_{year}-{month:02d}.pdf"
     txt_out = cache_dir / f"vnba_{year}-{month:02d}.txt"
 
-    # Tìm link PDF trên trang tin tức VNBA
+    vnba_pages = [
+        "https://vnba.org.vn/tin-tuc/thong-tin-kinh-te-tai-chinh/",
+        f"https://vnba.org.vn/tin-tuc/thong-tin-kinh-te-tai-chinh/?page=1",
+    ]
+
+    for page_url in vnba_pages:
+        try:
+            r = requests.get(page_url, headers=HEADERS, timeout=TIMEOUT)
+            if r.status_code != 200:
+                continue
+            soup = BeautifulSoup(r.text, "html.parser")
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                text = a.get_text(strip=True).lower()
+                # Điều kiện nới lỏng: chỉ cần năm + có PDF hoặc download link
+                # Chấp nhận cả chữ "tháng 3" lẫn số "3" lẫn "03"
+                month_variants = [
+                    vi_month,          # "tháng 3"
+                    f"tháng {month}",  # "tháng 3" (trùng nhưng safe)
+                    f" {month} ",      # " 3 "
+                    f"-{month:02d}-",  # "-03-" trong URL
+                    f"/{month:02d}/",  # "/03/" trong URL
+                    f"thang-{month}",  # "thang-3" trong URL
+                    f"thang{month:02d}",  # "thang03"
+                ]
+                has_month = any(v in text or v in href for v in month_variants)
+                has_year = str(year) in text or str(year) in href
+                has_link = (".pdf" in href.lower() or "download" in href.lower()
+                            or "/uploads/" in href or "/files/" in href)
+                if has_year and has_link:
+                    # Nếu có thông tin tháng thì ưu tiên, không thì cũng lấy (bài mới nhất)
+                    pdf_url = href if href.startswith("http") else f"https://vnba.org.vn{href}"
+                    try:
+                        r2 = requests.get(pdf_url, headers=HEADERS, timeout=TIMEOUT, stream=True)
+                        if r2.status_code == 200:
+                            with open(pdf_out, "wb") as f:
+                                for chunk in r2.iter_content(chunk_size=8192):
+                                    f.write(chunk)
+                            size = pdf_out.stat().st_size
+                            if size > 1024:
+                                pdf_to_text(pdf_out, txt_out)
+                                tag = "✅" if has_month else "⚠️ "
+                                print(f"     {tag} VNBA → {pdf_out.name} ({size:,} bytes)")
+                                return {
+                                    "source": source, "status": "OK" if has_month else "OK_FALLBACK",
+                                    "url": pdf_url,
+                                    "pdf_file": str(pdf_out),
+                                    "txt_file": str(txt_out),
+                                }
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+    # Fallback: lấy link PDF đầu tiên tìm được trên trang (bài mới nhất)
     try:
         r = requests.get(
             "https://vnba.org.vn/tin-tuc/thong-tin-kinh-te-tai-chinh/",
@@ -359,47 +528,56 @@ def fetch_vnba(year: int, month: int, cache_dir: Path) -> dict:
         )
         if r.status_code == 200:
             soup = BeautifulSoup(r.text, "html.parser")
+            # Tìm link article đầu tiên rồi vào xem có PDF không
             for a in soup.find_all("a", href=True):
                 href = a["href"]
-                text = a.get_text(strip=True).lower()
-                if (
-                    (vi_month in text or str(month) in text)
-                    and str(year) in text
-                    and (".pdf" in href.lower() or "download" in href.lower())
-                ):
-                    pdf_url = href if href.startswith("http") else f"https://vnba.org.vn{href}"
-                    r2 = requests.get(pdf_url, headers=HEADERS, timeout=TIMEOUT, stream=True)
-                    if r2.status_code == 200:
-                        with open(pdf_out, "wb") as f:
-                            for chunk in r2.iter_content(chunk_size=8192):
-                                f.write(chunk)
-                        pdf_to_text(pdf_out, txt_out)
-                        print(f"     ✅ VNBA → {pdf_out.name}")
-                        return {
-                            "source": source, "status": "OK",
-                            "url": pdf_url,
-                            "pdf_file": str(pdf_out),
-                            "txt_file": str(txt_out),
-                        }
+                if "thong-tin-kinh-te" in href or "kinh-te-tai-chinh" in href:
+                    article_url = href if href.startswith("http") else f"https://vnba.org.vn{href}"
+                    try:
+                        ar = requests.get(article_url, headers=HEADERS, timeout=TIMEOUT)
+                        if ar.status_code == 200:
+                            art_soup = BeautifulSoup(ar.text, "html.parser")
+                            for a2 in art_soup.find_all("a", href=True):
+                                h2 = a2["href"]
+                                if ".pdf" in h2.lower() or "/uploads/" in h2:
+                                    pdf_url = h2 if h2.startswith("http") else f"https://vnba.org.vn{h2}"
+                                    r2 = requests.get(pdf_url, headers=HEADERS, timeout=TIMEOUT, stream=True)
+                                    if r2.status_code == 200:
+                                        with open(pdf_out, "wb") as f:
+                                            for chunk in r2.iter_content(chunk_size=8192):
+                                                f.write(chunk)
+                                        if pdf_out.stat().st_size > 1024:
+                                            pdf_to_text(pdf_out, txt_out)
+                                            print(f"     ⚠️  VNBA (article PDF fallback) → {pdf_out.name}")
+                                            return {
+                                                "source": source, "status": "OK_FALLBACK",
+                                                "url": pdf_url,
+                                                "pdf_file": str(pdf_out),
+                                                "txt_file": str(txt_out),
+                                            }
+                    except Exception:
+                        continue
+                    break  # Chỉ thử article đầu tiên
     except Exception:
         pass
 
-    # Fallback: lấy HTML trang tin tức → extract text
+    # Fallback cuối: HTML trang danh sách → extract text
     try:
         r = requests.get(
             "https://vnba.org.vn/tin-tuc/thong-tin-kinh-te-tai-chinh/",
             headers=HEADERS, timeout=TIMEOUT
         )
-        if r.status_code == 200 and vi_month in r.text.lower():
+        if r.status_code == 200:
             txt_out_html = cache_dir / f"vnba_{year}-{month:02d}.txt"
             soup = BeautifulSoup(r.text, "html.parser")
             text_content = soup.get_text(separator="\n", strip=True)
-            txt_out_html.write_text(text_content, encoding="utf-8")
-            print(f"     ⚠️  VNBA (HTML fallback) → {txt_out_html.name}")
-            return {
-                "source": source, "status": "OK_FALLBACK",
-                "url": r.url, "txt_file": str(txt_out_html),
-            }
+            if len(text_content) > 200:
+                txt_out_html.write_text(text_content, encoding="utf-8")
+                print(f"     ⚠️  VNBA (HTML fallback) → {txt_out_html.name}")
+                return {
+                    "source": source, "status": "OK_FALLBACK",
+                    "url": r.url, "txt_file": str(txt_out_html),
+                }
     except Exception:
         pass
 

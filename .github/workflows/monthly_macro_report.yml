@@ -39,6 +39,7 @@ jobs:
       report_month: ${{ steps.set-month.outputs.report_month }}
       preflight_status: ${{ steps.preflight.outputs.status }}
       sources_found: ${{ steps.preflight.outputs.sources_found }}
+      artifact_name: ${{ steps.set-artifact.outputs.artifact_name }}
 
     steps:
       - name: Checkout repository
@@ -226,12 +227,17 @@ jobs:
             echo "✅ Committed and pushed"
           fi
 
+      - name: Set artifact name output
+        if: steps.check-existing.outputs.skip != 'true'
+        id: set-artifact
+        run: echo "artifact_name=vn-macro-report-${{ env.REPORT_MONTH }}" >> $GITHUB_OUTPUT
+
       - name: Upload report as artifact
         if: steps.check-existing.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: vn-macro-report-${{ env.REPORT_MONTH }}
-          path: vn-macro-monthly/${{ env.REPORT_MONTH }}/report.html
+          path: vn-macro-monthly/${{ env.REPORT_MONTH }}/
           retention-days: 90
 
   notify:
@@ -248,6 +254,15 @@ jobs:
           python-version: '3.11'
 
       - run: pip install -r requirements.txt --quiet
+
+      # Download artifact để lấy report.pdf đính kèm email
+      - name: Download report artifact
+        if: needs.generate-report.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.generate-report.outputs.artifact_name }}
+          path: vn-macro-monthly/${{ needs.generate-report.outputs.report_month }}/
+        continue-on-error: true   # không fail notify nếu artifact không tồn tại
 
       - name: Send SUCCESS email
         if: needs.generate-report.result == 'success'
