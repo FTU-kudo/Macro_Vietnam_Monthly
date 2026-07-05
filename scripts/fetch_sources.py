@@ -76,6 +76,30 @@ def pdf_to_text(pdf_path: Path, txt_path: Path) -> bool:
         return False
 
 
+def verify_month_content(text: str, year: int, month: int) -> bool:
+    """
+    Kiểm tra text có đề cập đến đúng tháng/năm mục tiêu không.
+    Trả về True nếu có ít nhất một dấu hiệu nhận dạng đúng.
+    """
+    if not text:
+        return False
+    t = text.lower()
+    vi_m = VI_MONTHS[month].lower()          # "tháng 3"
+    en_full = EN_MONTHS_FULL[month].lower()  # "march"
+    en_abbr = EN_MONTHS_ABBR[month].lower()  # "mar"
+    checks = [
+        vi_m in t,                           # "tháng 3"
+        f"tháng {month}" in t,              # "tháng 3" (safe duplicate)
+        f"{month:02d}/{year}" in t,          # "03/2026"
+        f"{month}/{year}" in t,              # "3/2026"
+        f"{year}-{month:02d}" in t,          # "2026-03"
+        en_full in t,                        # "march"
+        en_abbr in t,                        # "mar"
+        f"q{((month-1)//3)+1}/{year}" in t,  # "q1/2026" (cho tháng 3)
+    ]
+    return any(checks)
+
+
 # ─────────────────────────────────────────────────────────────────
 # FETCH TỪNG NGUỒN
 # ─────────────────────────────────────────────────────────────────
@@ -83,23 +107,33 @@ def pdf_to_text(pdf_path: Path, txt_path: Path) -> bool:
 def fetch_nso(year: int, month: int, cache_dir: Path) -> dict:
     """
     NSO: Tìm và tải trang báo cáo KTXH tháng từ gso.gov.vn.
-    Thử nhiều URL pattern khác nhau vì GSO không nhất quán.
+    Quét nhiều trang + kiểm tra nội dung đúng tháng mục tiêu.
     """
     source = "NSO"
     output_file = cache_dir / f"nso_{year}-{month:02d}.html"
     vi_month = VI_MONTHS[month]
 
-    # Các URL có thể chứa báo cáo tháng
-    candidate_urls = [
-        # Pattern 1: URL chuẩn
-        f"https://www.gso.gov.vn/bai-viet/thong-ke/tinh-hinh-kinh-te-xa-hoi/",
-        # Pattern 2: Tìm từ trang chủ
+    def try_article(url: str) -> str | None:
+        """Tải URL, trả về content nếu có đề cập tháng đúng."""
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+            if r.status_code == 200 and len(r.content) > 500:
+                text = BeautifulSoup(r.content, "html.parser").get_text()
+                if verify_month_content(text, year, month):
+                    return r.content
+        except Exception:
+            pass
+        return None
+
+    # ── Bước 1: Quét trang danh mục GSO (nhiều trang) để tìm link đúng tháng ──
+    listing_pages = [
+        "https://www.gso.gov.vn/bai-viet/thong-ke/tinh-hinh-kinh-te-xa-hoi/",
+        "https://www.gso.gov.vn/bai-viet/thong-ke/tinh-hinh-kinh-te-xa-hoi/?page=2",
+        "https://www.gso.gov.vn/bai-viet/thong-ke/tinh-hinh-kinh-te-xa-hoi/?page=3",
         "https://www.gso.gov.vn/",
     ]
-
-    # Tìm link bài viết cụ thể
     article_url = None
-    for base_url in candidate_urls:
+    for base_url in listing_pages:
         try:
             r = requests.get(base_url, headers=HEADERS, timeout=TIMEOUT)
             if r.status_code != 200:
@@ -108,10 +142,13 @@ def fetch_nso(year: int, month: int, cache_dir: Path) -> dict:
             for a in soup.find_all("a", href=True):
                 href = a["href"]
                 text = a.get_text(strip=True).lower()
-                if (
-                    ("kinh tế xã hội" in text or "ktxh" in text or "thong cao" in text)
-                    and (vi_month in text or str(year) in text)
-                ):
+                # Tìm link có tên chủ đề KTXH và đề cập đúng tháng/năm
+                is_ktxh = (
+                    "kinh tế xã hội" in text or "ktxh" in text
+                    or "thong-cao" in href or "kinh-te-xa-hoi" in href
+                )
+                has_month = verify_month_content(text, year, month) or verify_month_content(href, year, month)
+                if is_ktxh and has_month:
                     article_url = href if href.startswith("http") else f"https://www.gso.gov.vn{href}"
                     break
             if article_url:
@@ -119,94 +156,113 @@ def fetch_nso(year: int, month: int, cache_dir: Path) -> dict:
         except Exception:
             continue
 
-    # Fetch bài viết tìm được hoặc trang danh mục
-    fetch_url = article_url or candidate_urls[0]
-    try:
-        r = requests.get(fetch_url, headers=HEADERS, timeout=TIMEOUT)
-        if r.status_code == 200:
-            output_file.write_bytes(r.content)
-            print(f"     ✅ NSO → {output_file.name} ({len(r.content):,} bytes)")
-            return {
-                "source": source, "status": "OK",
-                "url": fetch_url, "file": str(output_file),
-                "size_bytes": len(r.content),
-            }
-    except Exception as e:
-        pass
+    # ── Bước 2: Fetch article tìm được (nếu có) ──────────────────────
+    if article_url:
+        content = try_article(article_url)
+        if content:
+            output_file.write_bytes(content)
+            print(f"     ✅ NSO → {output_file.name} ({len(content):,} bytes)")
+            return {"source": source, "status": "OK", "url": article_url, "file": str(output_file)}
 
-    # Fallback: VnEconomy tổng hợp số liệu GSO
-    fallback_url = f"https://vneconomy.vn/search/?q=tổng+cục+thống+kê+{vi_month}+{year}"
-    try:
-        r = requests.get(fallback_url, headers=HEADERS, timeout=TIMEOUT)
-        if r.status_code == 200:
-            output_file.write_bytes(r.content)
-            print(f"     ⚠️  NSO (fallback VnEconomy) → {output_file.name}")
-            return {
-                "source": source, "status": "OK_FALLBACK",
-                "url": fallback_url, "file": str(output_file),
-            }
-    except Exception as e:
-        pass
+    # ── Bước 3: VnEconomy search tìm bài GSO đúng tháng ───────────────
+    search_urls = [
+        f"https://vneconomy.vn/search/?q=tổng+cục+thống+kê+{vi_month}+{year}",
+        f"https://cafef.vn/search/?q=kinh+tế+xã+hội+{vi_month}+{year}",
+        f"https://tinnhanhchungkhoan.vn/search/?q=ktxh+{vi_month}+{year}",
+    ]
+    for search_url in search_urls:
+        try:
+            r = requests.get(search_url, headers=HEADERS, timeout=TIMEOUT)
+            if r.status_code != 200:
+                continue
+            soup = BeautifulSoup(r.text, "html.parser")
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                link_text = a.get_text(strip=True).lower()
+                is_ktxh = (
+                    "kinh tế xã hội" in link_text or "ktxh" in link_text
+                    or "thống kê" in link_text
+                )
+                has_month = verify_month_content(link_text, year, month) or verify_month_content(href, year, month)
+                if is_ktxh and has_month:
+                    art_url = href if href.startswith("http") else f"{search_url.split('/search')[0]}{href}"
+                    content = try_article(art_url)
+                    if content:
+                        output_file.write_bytes(content)
+                        print(f"     ⚠️  NSO (search fallback) → {output_file.name}")
+                        return {"source": source, "status": "OK_FALLBACK", "url": art_url, "file": str(output_file)}
+        except Exception:
+            continue
 
-    return {"source": source, "status": "FAIL", "error": "Không tải được NSO"}
+    return {"source": source, "status": "FAIL", "error": f"Không tìm được NSO data cho {year}-{month:02d}"}
 
 
 def fetch_pmi(year: int, month: int, cache_dir: Path) -> dict:
     """
     PMI: S&P Global Vietnam Manufacturing PMI press release.
-    Thử S&P chính thức, sau đó VnEconomy / CafeF.
+    Kiểm tra nội dung có đúng tháng mục tiêu không.
     """
     source = "PMI"
     output_file = cache_dir / f"pmi_{year}-{month:02d}.html"
     en_month = EN_MONTHS_FULL[month]
+    en_abbr = EN_MONTHS_ABBR[month]
 
-    # S&P Global chính thức
-    pmi_urls = [
-        "https://www.pmi.spglobal.com/Survey/PressRelease/VN",
-        f"https://www.pmi.spglobal.com/Survey/PressRelease/VN/{en_month}{year}",
-    ]
-    for url in pmi_urls:
+    def try_and_verify(url: str, save: bool = True) -> bytes | None:
+        """Fetch URL, trả về content nếu có đề cập tháng đúng."""
         try:
             r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-            if r.status_code == 200 and len(r.text) > 1000:
-                output_file.write_bytes(r.content)
-                print(f"     ✅ PMI (S&P) → {output_file.name} ({len(r.content):,} bytes)")
-                return {"source": source, "status": "OK", "url": url, "file": str(output_file)}
+            if r.status_code == 200 and len(r.content) > 500:
+                text = BeautifulSoup(r.content, "html.parser").get_text()
+                if verify_month_content(text, year, month):
+                    if save:
+                        output_file.write_bytes(r.content)
+                    return r.content
         except Exception:
-            continue
+            pass
+        return None
 
-    # Fallback: VnEconomy / CafeF
-    fallback_urls = [
+    # S&P Global chính thức — URL có tháng/năm explicit
+    pmi_urls = [
+        f"https://www.pmi.spglobal.com/Survey/PressRelease/VN/{en_month}{year}",
+        f"https://www.pmi.spglobal.com/Survey/PressRelease/VN/{en_abbr}{year}",
+        "https://www.pmi.spglobal.com/Survey/PressRelease/VN",
+    ]
+    for url in pmi_urls:
+        content = try_and_verify(url)
+        if content:
+            print(f"     ✅ PMI (S&P) → {output_file.name} ({len(content):,} bytes)")
+            return {"source": source, "status": "OK", "url": url, "file": str(output_file)}
+
+    # Fallback: VnEconomy / CafeF search — tìm bài viết chứa tháng đúng
+    fallback_searches = [
         f"https://vneconomy.vn/search/?q=PMI+Việt+Nam+{en_month}+{year}",
         f"https://cafef.vn/search/?q=PMI+Viet+Nam+{en_month}+{year}",
         f"https://tinnhanhchungkhoan.vn/search/?q=PMI+{en_month}+{year}",
+        # Thêm: tìm theo tháng tiếng Việt
+        f"https://vneconomy.vn/search/?q=PMI+Việt+Nam+{VI_MONTHS[month]}+{year}",
     ]
-    for url in fallback_urls:
+    for search_url in fallback_searches:
         try:
-            r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-            if r.status_code == 200 and "pmi" in r.text.lower():
-                # Tìm link bài viết cụ thể
-                soup = BeautifulSoup(r.text, "html.parser")
-                for a in soup.find_all("a", href=True):
-                    text = a.get_text(strip=True).lower()
-                    href = a["href"]
-                    if "pmi" in text and (en_month.lower() in text or str(year) in text):
-                        article_url = href if href.startswith("http") else f"https://vneconomy.vn{href}"
-                        try:
-                            ar = requests.get(article_url, headers=HEADERS, timeout=TIMEOUT)
-                            if ar.status_code == 200:
-                                output_file.write_bytes(ar.content)
-                                print(f"     ⚠️  PMI (fallback) → {output_file.name}")
-                                return {
-                                    "source": source, "status": "OK_FALLBACK",
-                                    "url": article_url, "file": str(output_file),
-                                }
-                        except Exception:
-                            continue
+            r = requests.get(search_url, headers=HEADERS, timeout=TIMEOUT)
+            if r.status_code != 200:
+                continue
+            soup = BeautifulSoup(r.text, "html.parser")
+            for a in soup.find_all("a", href=True):
+                text_a = a.get_text(strip=True).lower()
+                href = a["href"]
+                is_pmi = "pmi" in text_a or "pmi" in href.lower()
+                has_month = verify_month_content(text_a, year, month) or verify_month_content(href, year, month)
+                if is_pmi and has_month:
+                    art_base = search_url.split("/search")[0]
+                    article_url = href if href.startswith("http") else f"{art_base}{href}"
+                    content = try_and_verify(article_url)
+                    if content:
+                        print(f"     ⚠️  PMI (search fallback) → {output_file.name}")
+                        return {"source": source, "status": "OK_FALLBACK", "url": article_url, "file": str(output_file)}
         except Exception:
             continue
 
-    return {"source": source, "status": "FAIL", "error": "Không tải được PMI"}
+    return {"source": source, "status": "FAIL", "error": f"Không tìm được PMI data cho {year}-{month:02d}"}
 
 
 def fetch_customs(year: int, month: int, cache_dir: Path) -> dict:
