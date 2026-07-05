@@ -19,8 +19,10 @@ from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email import encoders
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+VN_TZ = timezone(timedelta(hours=7))
 
 
 VI_MONTHS = [
@@ -47,9 +49,13 @@ def build_success_email(
     """Tạo email subject + HTML body đẹp cho success."""
     year, m = int(month[:4]), int(month[5:7])
     vi_month = VI_MONTHS[m]
-    generated = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+    # Giờ Việt Nam (UTC+7)
+    generated = datetime.now(VN_TZ).strftime("%d/%m/%Y %H:%M (giờ Việt Nam)")
+    # Tên file đính kèm theo tháng
+    pdf_name  = f"Báo cáo Vĩ mô Việt Nam - Tháng {m}/{year}.pdf"
+    html_name = f"Báo cáo Vĩ mô Việt Nam - Tháng {m}/{year}.html"
 
-    subject = f"📊 [VN Macro] Báo cáo {vi_month} {year} · {sources}/5 nguồn"
+    subject = f"📊 [VN Macro] Báo cáo {vi_month}/{year} · {sources}/5 nguồn"
 
     # Ghi chú đính kèm
     if has_pdf and has_html:
@@ -58,8 +64,8 @@ def build_success_email(
             'border-radius:8px;border:1px solid rgba(16,185,129,0.25);">'
             '<p style="color:#10b981;font-size:13px;margin:0;font-weight:600;">📎 Đính kèm trong email:</p>'
             '<ul style="color:#94a3b8;font-size:12px;margin:6px 0 0;padding-left:16px;line-height:1.8;">'
-            '<li><strong style="color:#f1f5f9;">report.pdf</strong> — In &amp; lưu trữ</li>'
-            '<li><strong style="color:#f1f5f9;">report.html</strong> — Mở bằng Chrome/Edge để xem full dark theme + biểu đồ</li>'
+            f'<li><strong style="color:#f1f5f9;">{pdf_name}</strong> — In &amp; lưu trữ</li>'
+            f'<li><strong style="color:#f1f5f9;">{html_name}</strong> — Mở bằng Chrome/Edge để xem full theme + biểu đồ</li>'
             '</ul></div>'
         )
     elif has_pdf:
@@ -100,7 +106,7 @@ def build_success_email(
       Tình hình Kinh tế · Tiền tệ · Tài chính
     </h1>
     <p style="color:#c4b5fd;margin:8px 0 0;font-size:14px;">
-      {vi_month} {year} · Chốt dữ liệu: {month}
+      {vi_month}/{year} · Chốt dữ liệu: {month}
     </p>
   </div>
 
@@ -110,7 +116,7 @@ def build_success_email(
     <table style="width:100%;border-collapse:collapse;">
       <tr>
         <td style="padding:6px 0;color:#94a3b8;font-size:13px;width:150px;">Kỳ báo cáo</td>
-        <td style="padding:6px 0;color:#f1f5f9;font-weight:600;font-size:13px;">{vi_month} {year}</td>
+        <td style="padding:6px 0;color:#f1f5f9;font-weight:600;font-size:13px;">{vi_month}/{year}</td>
       </tr>
       <tr>
         <td style="padding:6px 0;color:#94a3b8;font-size:13px;">Nguồn dữ liệu</td>
@@ -133,7 +139,7 @@ def build_success_email(
               border-radius:10px;padding:14px 18px;margin-bottom:20px;">
     <p style="color:#c4b5fd;font-size:12px;margin:0;line-height:1.7;">
       💡 <strong>Cách xem báo cáo đầy đủ:</strong>
-      Tải file <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:3px;">report.html</code>
+      Tải file <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:3px;">{html_name}</code>
       đính kèm &rarr; mở bằng <strong>Chrome</strong> hoặc <strong>Edge</strong> &rarr; xem báo cáo
       với biểu đồ tương tác và dark theme.<br>
       <span style="color:#8b8ba7;font-size:11px;margin-top:4px;display:inline-block;">
@@ -144,11 +150,8 @@ def build_success_email(
 
   <!-- Footer -->
   <p style="text-align:center;color:#475569;font-size:11px;margin:0;line-height:1.7;">
-    Tự động bởi GitHub Actions &nbsp;·&nbsp;
-    <a href="{repo_url}" style="color:#7c3aed;text-decoration:none;">
-      {repo_url.replace("https://github.com/", "")}
-    </a><br>
-    Email này được tạo tự động — không cần reply.
+    © Bản quyền thuộc về FTU-Kudo<br>
+    Email này được tạo tự động — Vui lòng không reply.
   </p>
 
 </div>

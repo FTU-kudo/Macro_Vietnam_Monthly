@@ -37,6 +37,7 @@ jobs:
 
     outputs:
       report_month: ${{ steps.set-month.outputs.report_month }}
+      report_filename: ${{ steps.set-month.outputs.report_filename }}
       preflight_status: ${{ steps.preflight.outputs.status }}
       sources_found: ${{ steps.preflight.outputs.sources_found }}
       artifact_name: ${{ steps.set-artifact.outputs.artifact_name }}
@@ -61,7 +62,13 @@ jobs:
           fi
           echo "report_month=$MONTH" >> $GITHUB_OUTPUT
           echo "REPORT_MONTH=$MONTH" >> $GITHUB_ENV
-          echo "📅 Report month: $MONTH"
+          # Tên file theo tháng (dạng: Tháng 6-2026)
+          MONTH_NUM=$(echo $MONTH | cut -d'-' -f2 | sed 's/^0//')
+          YEAR_NUM=$(echo $MONTH | cut -d'-' -f1)
+          FNAME="Báo cáo Vĩ mô Việt Nam - Tháng ${MONTH_NUM}-${YEAR_NUM}"
+          echo "REPORT_FILENAME=$FNAME" >> $GITHUB_ENV
+          echo "report_filename=$FNAME" >> $GITHUB_OUTPUT
+          echo "📅 Report month: $MONTH | Filename: $FNAME"
 
       # ── Bỏ qua nếu đã có báo cáo đầy đủ 5/5 nguồn ──────────────
       - name: Check if full report already exists
@@ -187,14 +194,15 @@ jobs:
         if: steps.check-existing.outputs.skip != 'true'
         env:
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
+          REPORT_FILENAME: ${{ env.REPORT_FILENAME }}
         run: |
           python scripts/render_report.py \
             --month "$REPORT_MONTH" \
             --report "vn-macro-monthly/$REPORT_MONTH/report.json" \
             --history "vn-macro-monthly/history.json" \
             --template "assets/report_template.html" \
-            --output "vn-macro-monthly/$REPORT_MONTH/report.html"
-          echo "✅ report.html rendered"
+            --output "vn-macro-monthly/$REPORT_MONTH/${REPORT_FILENAME}.html"
+          echo "✅ report HTML rendered: ${REPORT_FILENAME}.html"
 
       - name: Install Playwright Chromium (for PDF export)
         if: steps.check-existing.outputs.skip != 'true'
@@ -207,11 +215,12 @@ jobs:
         if: steps.check-existing.outputs.skip != 'true'
         env:
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
+          REPORT_FILENAME: ${{ env.REPORT_FILENAME }}
         run: |
           python scripts/html_to_pdf.py \
-            --html "vn-macro-monthly/$REPORT_MONTH/report.html" \
-            --output "vn-macro-monthly/$REPORT_MONTH/report.pdf"
-          echo "✅ PDF exported"
+            --html "vn-macro-monthly/$REPORT_MONTH/${REPORT_FILENAME}.html" \
+            --output "vn-macro-monthly/$REPORT_MONTH/${REPORT_FILENAME}.pdf"
+          echo "✅ PDF exported: ${REPORT_FILENAME}.pdf"
 
       - name: Commit report to repository
         if: steps.check-existing.outputs.skip != 'true'
@@ -274,13 +283,14 @@ jobs:
           SOURCES_FOUND: ${{ needs.generate-report.outputs.sources_found }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
+          FNAME="${{ needs.generate-report.outputs.report_filename }}"
           python scripts/notify_email.py \
             --status success \
             --month "$REPORT_MONTH" \
             --sources "$SOURCES_FOUND" \
             --repo-url "$REPO_URL" \
-            --pdf-path "vn-macro-monthly/$REPORT_MONTH/report.pdf" \
-            --html-path "vn-macro-monthly/$REPORT_MONTH/report.html"
+            --pdf-path "vn-macro-monthly/$REPORT_MONTH/${FNAME}.pdf" \
+            --html-path "vn-macro-monthly/$REPORT_MONTH/${FNAME}.html"
 
       - name: Send FAILURE email
         if: needs.generate-report.result == 'failure'
