@@ -1,10 +1,12 @@
 name: 📊 VN Macro Monthly Report
 
-# Lượt 1: Ngày 3 — PMI + NSO + VBMA thường đã có
-# Lượt 2: Ngày 15 — Customs + VNBA thường đã có
+# Lượt 1: Ngày 3 lúc 09:00 VN (02:00 UTC) — NSO (thường công bố mùng 3) + PMI + VBMA
+# Lượt 2: Ngày 8 lúc 09:00 VN (02:00 UTC) — Hải quan (thường công bố mùng 6-10)
+# Lượt 3: Ngày 15 lúc 09:00 VN (02:00 UTC) — VNBA và hoàn thiện báo cáo 5/5
 on:
   schedule:
     - cron: '0 2 3 * *'
+    - cron: '0 2 8 * *'
     - cron: '0 2 15 * *'
   workflow_dispatch:
     inputs:
@@ -41,6 +43,7 @@ jobs:
       preflight_status: ${{ steps.preflight.outputs.status }}
       sources_found: ${{ steps.preflight.outputs.sources_found }}
       artifact_name: ${{ steps.set-artifact.outputs.artifact_name }}
+      skip_rest: ${{ steps.check-new-data.outputs.skip_rest }}
 
     steps:
       - name: Checkout repository
@@ -83,7 +86,7 @@ jobs:
           d = json.load(open('$REPORT'))
           print(d.get('_meta', {}).get('sources_available', 0))
           " 2>/dev/null || echo "0")
-
+            echo "existing_sources=$SOURCES" >> $GITHUB_OUTPUT
             if [ "$SOURCES" = "5" ]; then
               echo "skip=true" >> $GITHUB_OUTPUT
               echo "✅ Báo cáo đầy đủ ($SOURCES/5) đã có cho $MONTH — bỏ qua"
@@ -92,6 +95,7 @@ jobs:
               echo "⚠️  Báo cáo cũ chỉ $SOURCES/5 nguồn — chạy lại để bổ sung"
             fi
           else
+            echo "existing_sources=0" >> $GITHUB_OUTPUT
             echo "skip=false" >> $GITHUB_OUTPUT
             echo "📋 Chưa có báo cáo tháng $MONTH — bắt đầu tạo"
           fi
@@ -126,7 +130,7 @@ jobs:
         id: preflight
         env:
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
-          FORCE_PARTIAL: ${{ github.event.inputs.force_partial || 'false' }}
+          FORCE_PARTIAL: ${{ github.event_name == 'schedule' && 'true' || (github.event.inputs.force_partial || 'false') }}
           SKIP_PREFLIGHT: ${{ github.event.inputs.skip_preflight || 'false' }}
         run: |
           # Nếu skip_preflight=true → bỏ qua check, tiến hành luôn
@@ -156,19 +160,41 @@ jobs:
 
       - name: Fetch and cache sources
         if: steps.check-existing.outputs.skip != 'true'
+        id: fetch-sources
         env:
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
-          FORCE_PARTIAL: ${{ github.event.inputs.force_partial || 'false' }}
+          FORCE_PARTIAL: ${{ github.event_name == 'schedule' && 'true' || (github.event.inputs.force_partial || 'false') }}
         run: |
           python scripts/fetch_sources.py \
             --month "$REPORT_MONTH" \
             --cache-dir "vn-macro-monthly/$REPORT_MONTH/sources_cache" \
             --force-partial "$FORCE_PARTIAL"
-          echo "✅ Sources cached"
+          FETCHED=$(python3 -c "
+          import json
+          d = json.load(open('vn-macro-monthly/$REPORT_MONTH/sources_cache/fetch_log.json'))
+          ok = sum(1 for s in d.get('sources', {}).values() if s.get('status') in ('OK', 'OK_FALLBACK'))
+          print(ok)
+          " 2>/dev/null || echo "0")
+          echo "fetched_sources=$FETCHED" >> $GITHUB_OUTPUT
+          echo "✅ Sources cached ($FETCHED/5 thành công)"
+
+      - name: Check if new sources were found
+        id: check-new-data
+        if: steps.check-existing.outputs.skip != 'true'
+        run: |
+          EXISTING="${{ steps.check-existing.outputs.existing_sources }}"
+          FETCHED="${{ steps.fetch-sources.outputs.fetched_sources }}"
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$EXISTING" -gt 0 ] && [ "$FETCHED" -le "$EXISTING" ]; then
+            echo "skip_rest=true" >> $GITHUB_OUTPUT
+            echo "⏭️  Lịch chạy tự động (cron): Số nguồn tìm thấy ($FETCHED/5) không tăng so với báo cáo cũ ($EXISTING/5) — không cần chạy lại AI hay gửi lại email."
+          else
+            echo "skip_rest=false" >> $GITHUB_OUTPUT
+            echo "✅ Có dữ liệu mới hoặc chạy thủ công — tiếp tục tạo báo cáo."
+          fi
 
       # ── FIX: đổi từ ANTHROPIC_API_KEY → GEMINI_API_KEY ──────────
       - name: Extract 41 indicators via Gemini API
-        if: steps.check-existing.outputs.skip != 'true'
+        if: steps.check-existing.outputs.skip != 'true' && steps.check-new-data.outputs.skip_rest != 'true'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
@@ -180,7 +206,7 @@ jobs:
           echo "✅ report.json generated"
 
       - name: Update history.json
-        if: steps.check-existing.outputs.skip != 'true'
+        if: steps.check-existing.outputs.skip != 'true' && steps.check-new-data.outputs.skip_rest != 'true'
         env:
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
         run: |
@@ -191,7 +217,7 @@ jobs:
           echo "✅ history.json updated"
 
       - name: Render HTML report
-        if: steps.check-existing.outputs.skip != 'true'
+        if: steps.check-existing.outputs.skip != 'true' && steps.check-new-data.outputs.skip_rest != 'true'
         env:
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
           REPORT_FILENAME: ${{ env.REPORT_FILENAME }}
@@ -205,14 +231,14 @@ jobs:
           echo "✅ report HTML rendered: ${REPORT_FILENAME}.html"
 
       - name: Install Playwright Chromium (for PDF export)
-        if: steps.check-existing.outputs.skip != 'true'
+        if: steps.check-existing.outputs.skip != 'true' && steps.check-new-data.outputs.skip_rest != 'true'
         run: |
           pip install playwright --quiet
           playwright install chromium --with-deps
           echo "✅ Playwright + Chromium ready"
 
       - name: Export PDF from HTML report
-        if: steps.check-existing.outputs.skip != 'true'
+        if: steps.check-existing.outputs.skip != 'true' && steps.check-new-data.outputs.skip_rest != 'true'
         env:
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
           REPORT_FILENAME: ${{ env.REPORT_FILENAME }}
@@ -223,7 +249,7 @@ jobs:
           echo "✅ PDF exported: ${REPORT_FILENAME}.pdf"
 
       - name: Commit report to repository
-        if: steps.check-existing.outputs.skip != 'true'
+        if: steps.check-existing.outputs.skip != 'true' && steps.check-new-data.outputs.skip_rest != 'true'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "VN Macro Bot"
@@ -237,12 +263,12 @@ jobs:
           fi
 
       - name: Set artifact name output
-        if: steps.check-existing.outputs.skip != 'true'
+        if: steps.check-existing.outputs.skip != 'true' && steps.check-new-data.outputs.skip_rest != 'true'
         id: set-artifact
         run: echo "artifact_name=vn-macro-report-${{ env.REPORT_MONTH }}" >> $GITHUB_OUTPUT
 
       - name: Upload report as artifact
-        if: steps.check-existing.outputs.skip != 'true'
+        if: steps.check-existing.outputs.skip != 'true' && steps.check-new-data.outputs.skip_rest != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: vn-macro-report-${{ env.REPORT_MONTH }}
@@ -274,7 +300,7 @@ jobs:
         continue-on-error: true   # không fail notify nếu artifact không tồn tại
 
       - name: Send SUCCESS email
-        if: needs.generate-report.result == 'success'
+        if: needs.generate-report.result == 'success' && needs.generate-report.outputs.skip_rest != 'true' && needs.generate-report.outputs.artifact_name != ''
         env:
           EMAIL_USER: ${{ secrets.GMAIL_USER }}
           EMAIL_PASS: ${{ secrets.GMAIL_APP_PASSWORD }}
@@ -293,7 +319,7 @@ jobs:
             --html-path "vn-macro-monthly/$REPORT_MONTH/${FNAME}.html"
 
       - name: Send FAILURE email
-        if: needs.generate-report.result == 'failure'
+        if: needs.generate-report.result == 'failure' && needs.generate-report.outputs.skip_rest != 'true'
         env:
           EMAIL_USER: ${{ secrets.GMAIL_USER }}
           EMAIL_PASS: ${{ secrets.GMAIL_APP_PASSWORD }}
