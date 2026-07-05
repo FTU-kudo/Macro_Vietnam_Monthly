@@ -52,8 +52,8 @@ def build_success_email(
     # Giờ Việt Nam (UTC+7)
     generated = datetime.now(VN_TZ).strftime("%d/%m/%Y %H:%M (giờ Việt Nam)")
     # Tên file đính kèm theo tháng
-    pdf_name  = f"Báo cáo Vĩ mô Việt Nam - Tháng {m}/{year}.pdf"
-    html_name = f"Báo cáo Vĩ mô Việt Nam - Tháng {m}/{year}.html"
+    pdf_name  = f"Báo cáo Vĩ mô Việt Nam - Tháng {m}.{year}.pdf"
+    html_name = f"Báo cáo Vĩ mô Việt Nam - Tháng {m}.{year}.html"
 
     subject = f"📊 [VN Macro] Báo cáo {vi_month}/{year} · {sources}/5 nguồn"
 
@@ -207,7 +207,9 @@ def attach_file(msg: MIMEMultipart, file_path: Path, mime_type: tuple,
         part = MIMEBase(*mime_type)
         part.set_payload(f.read())
     encoders.encode_base64(part)
-    part.add_header("Content-Disposition", f'attachment; filename="{file_path.name}"')
+    # Dùng keyword argument (filename=..., name=...) để Python tự động mã hóa chuẩn RFC 2231/2047 cho tên file tiếng Việt UTF-8
+    part.add_header("Content-Disposition", "attachment", filename=file_path.name)
+    part.add_header("Content-Type", f"{mime_type[0]}/{mime_type[1]}", name=file_path.name)
     msg.attach(part)
     print(f"  📎 Đính kèm: {file_path.name} ({size_mb:.1f} MB)")
     return True

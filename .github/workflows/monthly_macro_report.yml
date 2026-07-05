@@ -72,7 +72,7 @@ jobs:
           # Tên file theo tháng (dạng: Tháng 6-2026)
           MONTH_NUM=$(echo $MONTH | cut -d'-' -f2 | sed 's/^0//')
           YEAR_NUM=$(echo $MONTH | cut -d'-' -f1)
-          FNAME="Báo cáo Vĩ mô Việt Nam - Tháng ${MONTH_NUM}-${YEAR_NUM}"
+          FNAME="Báo cáo Vĩ mô Việt Nam - Tháng ${MONTH_NUM}.${YEAR_NUM}"
           echo "REPORT_FILENAME=$FNAME" >> $GITHUB_ENV
           echo "report_filename=$FNAME" >> $GITHUB_OUTPUT
           echo "📅 Report month: $MONTH | Filename: $FNAME"
