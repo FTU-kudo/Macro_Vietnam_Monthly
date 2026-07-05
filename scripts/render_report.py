@@ -46,11 +46,19 @@ def inject_data_into_template(
       __PERIOD_LINE__   → "Kỳ báo cáo: YYYY-MM · Chốt: DD/MM/YYYY · N/5 nguồn: ..."
     """
     import calendar
+    from datetime import timezone, timedelta
     year, month = int(month_str[:4]), int(month_str[5:7])
     vi_month = VI_MONTHS[month]
     title = f"Báo cáo vĩ mô Việt Nam – {vi_month} {year}"
-    generated_at = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+    
+    # Giờ Việt Nam (UTC+7)
+    vn_tz = timezone(timedelta(hours=7))
+    now_vn = datetime.now(vn_tz)
+    generated_at = now_vn.strftime("%d/%m/%Y %H:%M (UTC+7)")
+    generated_date = now_vn.strftime("%d/%m/%Y")
+    
     last_day = calendar.monthrange(year, month)[1]
+    data_cutoff_str = f"{last_day:02d}/{month:02d}/{year}"
 
     # Đọc sources từ _meta
     meta = report.get("_meta", {})
@@ -67,11 +75,36 @@ def inject_data_into_template(
         sources_badge = f"{sources_count}/5 nguồn: {' · '.join(labels)}"
 
     month_badge  = f"{vi_month}/{year}"
-    period_line  = f"Kỳ báo cáo: {month_str} · Chốt dữ liệu: {last_day:02d}/{month:02d}/{year} · {sources_badge}"
+    period_line  = f"Kỳ báo cáo: {month_str} (Số liệu chốt kỳ: {data_cutoff_str}) · Ngày thu thập &amp; tổng hợp: {generated_date} · {sources_badge}"
 
     # Serialize JSON (compact cho embed)
     report_js  = json.dumps(report,  ensure_ascii=False, separators=(",", ":"))
     history_js = json.dumps(history, ensure_ascii=False, separators=(",", ":"))
+
+    # Format key takeaways
+    takeaways_list = report.get("key_takeaways", [])
+    takeaways_html_parts = []
+    if isinstance(takeaways_list, list) and len(takeaways_list) > 0:
+        for idx, tk in enumerate(takeaways_list):
+            if isinstance(tk, dict):
+                text = tk.get("text") or tk.get("content") or tk.get("description") or str(tk)
+                star = tk.get("star", idx == 0)
+            elif isinstance(tk, str):
+                text = tk
+                star = (idx == 0 and "⭐" in text) or (idx == 0)
+            else:
+                text = str(tk)
+                star = (idx == 0)
+            
+            if star and not text.startswith("⭐"):
+                text = f"<strong>⭐ Điểm nhấn {idx+1}:</strong> {text}"
+            elif not text.startswith("⭐") and not text.startswith("<strong>"):
+                text = f"<strong>Điểm nhấn {idx+1}:</strong> {text}"
+            
+            takeaways_html_parts.append(f"<li>{text}</li>")
+        takeaways_html = "\n      ".join(takeaways_html_parts)
+    else:
+        takeaways_html = f"<li><strong>⭐ Tổng quan:</strong> {report.get('verdict_reason', 'Chưa có thông tin tổng hợp.')}</li>"
 
     # Thay thế
     html = template_html
@@ -80,7 +113,11 @@ def inject_data_into_template(
     html = html.replace("__REPORT_MONTH__",  month_str)
     html = html.replace("__REPORT_TITLE__",  title)
     html = html.replace("__GENERATED_AT__",  generated_at)
+    html = html.replace("__GENERATED_DATE__", generated_date)
     html = html.replace("__VERDICT__",       report.get("verdict", "N/A"))
+    html = html.replace("__VERDICT_REASON__", report.get("verdict_reason", ""))
+    html = html.replace("__KEY_TAKEAWAYS__", takeaways_html)
+    html = html.replace("__DATA_CUTOFF__",   data_cutoff_str)
     html = html.replace("__MONTH_BADGE__",   month_badge)
     html = html.replace("__PERIOD_LINE__",   period_line)
 

@@ -377,8 +377,8 @@ footer a{color:var(--purple);text-decoration:none}
         <div class="report-sub">__PERIOD_LINE__</div>
       </div>
       <div class="verdict-block">
-        <div class="verdict-badge">⚖️ TRUNG TÍNH — CẢNH GIÁC</div>
-        <div class="verdict-reason">Phục hồi mạnh về LƯỢNG (PMI 52.8, XNK +25%) nhưng 4 áp lực GIÁ &amp; THANH KHOẢN: CPI 5.60%, LNH 7.0%, nhập siêu 13.8 tỷ, NIM thu hẹp</div>
+        <div class="verdict-badge">⚖️ __VERDICT__</div>
+        <div class="verdict-reason">__VERDICT_REASON__</div>
       </div>
     </div>
     <div class="kpi-strip">
@@ -840,13 +840,13 @@ footer a{color:var(--purple);text-decoration:none}
       <!-- PANEL: LNH monthly trend (4 tuần) -->
       <div class="panel">
         <div class="panel-head">
-          <span class="panel-title">📈 Diễn biến LNH qua đêm 4 tuần tháng 5</span>
+          <span class="panel-title">📈 Diễn biến LNH qua đêm trong kỳ</span>
           <span class="panel-note">Nguồn: HN Ngân hàng</span>
         </div>
         <table class="panel-table">
           <thead><tr><th>Tuần</th><th>ON (%)</th><th>Biến động</th><th>Ghi chú</th></tr></thead>
           <tbody>
-            <tr><td>Đầu tháng 5</td><td class="mono">4.20</td><td>—</td><td>bình thường</td></tr>
+            <tr><td>Đầu kỳ</td><td class="mono">4.20</td><td>—</td><td>bình thường</td></tr>
             <tr><td>Tuần 2 (11-15/5)</td><td class="mono neu">5.30</td><td class="neg">+0.30đđ</td><td>bắt đầu leo thang</td></tr>
             <tr><td>Tuần 3 (18-22/5)</td><td class="mono neg">6.70</td><td class="neg">+1.40đđ</td><td>vọt mạnh</td></tr>
             <tr><td>Tuần 4 (25-29/5)</td><td class="mono neg">7.00</td><td class="neg">+0.30đđ</td><td>neo cao</td></tr>
@@ -859,7 +859,7 @@ footer a{color:var(--purple);text-decoration:none}
       <div class="panel">
         <div class="panel-head">
           <span class="panel-title">🏦 Lãi suất huy động theo ngân hàng — Big4 vs NHTM cổ phần</span>
-          <span class="panel-note">Nguồn: HN Ngân hàng · cuối tháng 5</span>
+          <span class="panel-note">Nguồn: HN Ngân hàng · cuối kỳ</span>
         </div>
         <table class="panel-table">
           <thead><tr><th>Nhóm</th><th>Ngân hàng</th><th>1-3 tháng</th><th>6-9 tháng</th><th>12 tháng+</th><th>Biến động</th></tr></thead>
@@ -900,7 +900,7 @@ footer a{color:var(--purple);text-decoration:none}
       <div class="panel">
         <div class="panel-head">
           <span class="panel-title">📉 Yield curve TPCP — lợi suất theo kỳ hạn</span>
-          <span class="panel-note">Nguồn: HN Ngân hàng + HTT Trái phiếu · snapshot tuần cuối tháng 5</span>
+          <span class="panel-note">Nguồn: HN Ngân hàng + HTT Trái phiếu · snapshot cuối kỳ</span>
         </div>
         <div class="yield-curve-wrap"><canvas id="yieldCurve"></canvas></div>
         <div class="panel-trend">Tăng nhẹ hầu hết kỳ hạn — áp lực từ lợi suất TP toàn cầu (đặc biệt Mỹ 10Y = 4.52%). Cấu trúc bình thường (dốc lên).</div>
@@ -951,7 +951,7 @@ footer a{color:var(--purple);text-decoration:none}
 
       <!-- Corporate bond -->
       <div class="data-card signal-amber">
-        <div class="dc-head"><span class="dc-name">Phát hành TPDN (tháng 5)</span><span class="dc-flag">🟡</span></div>
+        <div class="dc-head"><span class="dc-name">Phát hành TPDN (__MONTH_BADGE__)</span><span class="dc-flag">🟡</span></div>
         <div class="dc-value mono neu">40,000<span class="dc-unit"> tỷ VND</span></div>
         <div class="dc-meta"><span>riêng lẻ lũy kế <strong class="mono">107K tỷ</strong></span><span>công chúng <strong class="mono">20K tỷ</strong></span></div>
         <div class="dc-why">141.9 nghìn tỷ đáo hạn còn lại 2026, 52% BĐS → áp lực thanh khoản H2. NH chiếm 70% phát hành.</div>
@@ -959,7 +959,7 @@ footer a{color:var(--purple);text-decoration:none}
 
       <!-- Govt bond -->
       <div class="data-card">
-        <div class="dc-head"><span class="dc-name">Phát hành TPCP (tháng 5)</span><span class="dc-flag"></span></div>
+        <div class="dc-head"><span class="dc-name">Phát hành TPCP (__MONTH_BADGE__)</span><span class="dc-flag"></span></div>
         <div class="dc-value mono">33,630<span class="dc-unit"> tỷ VND</span></div>
         <div class="dc-meta"><span>lũy kế <strong class="mono">159K tỷ</strong></span><span>= <strong class="mono">32% KH năm</strong></span></div>
         <div class="dc-why">Huy động 32% KH năm — đạt quý. Khối ngoại đảo chiều mua ròng là tín hiệu tích cực.</div>
@@ -1067,7 +1067,7 @@ footer a{color:var(--purple);text-decoration:none}
       <!-- PANEL: Global commodities -->
       <div class="panel">
         <div class="panel-head">
-          <span class="panel-title">🛢️ Giá hàng hóa thế giới tháng 5/2026</span>
+          <span class="panel-title">🛢️ Giá hàng hóa thế giới __MONTH_BADGE__</span>
           <span class="panel-note">Nguồn: HN Ngân hàng (Tradingeconomics)</span>
         </div>
         <table class="panel-table">
@@ -1152,7 +1152,7 @@ footer a{color:var(--purple);text-decoration:none}
       <div class="panel">
         <div class="panel-head">
           <span class="panel-title">📈 Chỉ số chứng khoán toàn cầu</span>
-          <span class="panel-note">Nguồn: HN Ngân hàng · tháng 5/2026</span>
+          <span class="panel-note">Nguồn: HN Ngân hàng · __MONTH_BADGE__</span>
         </div>
         <table class="panel-table">
           <thead><tr><th>Chỉ số</th><th>MoM</th><th>YoY</th><th>Ghi chú</th></tr></thead>
@@ -1178,7 +1178,7 @@ footer a{color:var(--purple);text-decoration:none}
       <!-- Policy actions VN -->
       <div class="panel">
         <div class="panel-head">
-          <span class="panel-title">📋 Động thái chính sách VN tháng 5/2026</span>
+          <span class="panel-title">📋 Động thái chính sách VN __MONTH_BADGE__</span>
           <span class="panel-note">Nguồn: HN Ngân hàng</span>
         </div>
         <table class="panel-table">
@@ -1235,19 +1235,16 @@ footer a{color:var(--purple);text-decoration:none}
   </div>
   <div class="takeaways">
     <ol>
-      <li><strong>⭐ Kinh tế VN tháng 5/2026:</strong> phục hồi mạnh về LƯỢNG (PMI 52.8, XNK +25%, IIP +9.1%) nhưng 4 áp lực về GIÁ &amp; THANH KHOẢN: CPI 5.60% (vượt mục tiêu), LNH 7.0%, nhập siêu 13.8 tỷ, NIM thu hẹp → Q3-Q4/2026 nhiều thách thức.</li>
-      <li><strong>Lạm phát đã HIỆN HỮU</strong> không còn "sắp tới": CPI YoY 5.60% đã vượt mục tiêu 4.5% + PMI Chi phí đỉnh 15 năm → 2 nguồn (TCTK + S&amp;P) xác nhận nhau.</li>
-      <li><strong>Cán cân thương mại ĐẢO CHIỀU</strong> rõ rệt (-13.8 tỷ USD vs +5.1 tỷ cùng kỳ 2025) — nhập từ TQ +33.6% → rủi ro kép tỷ giá + phụ thuộc nguyên liệu.</li>
-      <li><strong>Thanh khoản VND căng thật:</strong> NHNN bơm ròng 30.732 tỷ nhưng LNH vẫn leo thang (HN Ngân hàng + HTT Trái phiếu cùng xác nhận).</li>
+      __KEY_TAKEAWAYS__
     </ol>
   </div>
 
   <!-- FOOTER -->
   <div class="disclaimer">
-    ⚠️ <strong>Miễn trừ trách nhiệm:</strong> Báo cáo vĩ mô tham khảo cá nhân. Số liệu từ 5 nguồn chính thức (TCTK, Hải quan, S&amp;P PMI, HTT Trái phiếu, HN Ngân hàng). Áp nguyên tắc Nhất quán thời gian (chốt dữ liệu 31/05/2026). <strong>Không phải lời khuyên đầu tư</strong>.
+    ⚠️ <strong>Miễn trừ trách nhiệm:</strong> Báo cáo vĩ mô tham khảo cá nhân. Số liệu từ 5 nguồn chính thức (TCTK, Hải quan, S&amp;P PMI, HTT Trái phiếu, HN Ngân hàng). Áp nguyên tắc Nhất quán thời gian (số liệu chốt hết kỳ __DATA_CUTOFF__). <strong>Không phải lời khuyên đầu tư</strong>.
   </div>
   <footer>
-    <div>📊 Báo cáo vĩ mô VN · Tháng 5/2026 · Tạo ngày 21/06/2026</div>
+    <div>📊 Báo cáo vĩ mô VN · __MONTH_BADGE__ · Cập nhật ngày __GENERATED_DATE__</div>
     <div style="margin-top:6px">Nguồn: <a href="https://www.nso.gov.vn" target="_blank">TCTK</a> · <a href="https://www.customs.gov.vn" target="_blank">Hải quan</a> · <a href="https://www.pmi.spglobal.com" target="_blank">S&amp;P PMI</a> · <a href="https://vbma.org.vn" target="_blank">HTT Trái phiếu</a> · <a href="https://vnba.org.vn" target="_blank">HN Ngân hàng</a></div>
   </footer>
 

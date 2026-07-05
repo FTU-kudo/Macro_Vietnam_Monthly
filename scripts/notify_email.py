@@ -106,7 +106,7 @@ def build_success_email(
       Tình hình Kinh tế · Tiền tệ · Tài chính
     </h1>
     <p style="color:#c4b5fd;margin:8px 0 0;font-size:14px;">
-      {vi_month}/{year} · Chốt dữ liệu: {month}
+      {vi_month}/{year} · Cập nhật mới nhất: {generated}
     </p>
   </div>
 
@@ -116,7 +116,7 @@ def build_success_email(
     <table style="width:100%;border-collapse:collapse;">
       <tr>
         <td style="padding:6px 0;color:#94a3b8;font-size:13px;width:150px;">Kỳ báo cáo</td>
-        <td style="padding:6px 0;color:#f1f5f9;font-weight:600;font-size:13px;">{vi_month}/{year}</td>
+        <td style="padding:6px 0;color:#f1f5f9;font-weight:600;font-size:13px;">{vi_month}/{year} (chốt số liệu hết tháng)</td>
       </tr>
       <tr>
         <td style="padding:6px 0;color:#94a3b8;font-size:13px;">Nguồn dữ liệu</td>
