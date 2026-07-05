@@ -268,6 +268,12 @@ def main():
         "generated_at": datetime.utcnow().isoformat() + "Z",
         "model": MODEL,
         "sources_available": sources_available,
+        "sources_list": [
+            src for src, txt in [
+                ("NSO", nso_text), ("PMI", pmi_text), ("Customs", customs_text),
+                ("VBMA", vbma_text), ("VNBA", vnba_text),
+            ] if txt is not None
+        ],
         "cache_dir": str(cache_dir),
     }
 

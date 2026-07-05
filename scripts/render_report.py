@@ -36,28 +36,53 @@ def inject_data_into_template(
 ) -> str:
     """
     Thay thế các placeholder trong template:
-      __REPORT_JSON__  → nội dung report.json
-      __HISTORY_JSON__ → nội dung history.json
-      __REPORT_MONTH__ → "YYYY-MM"
-      __REPORT_TITLE__ → "Báo cáo vĩ mô Việt Nam – Tháng X/YYYY"
-      __GENERATED_AT__ → ISO timestamp
+      __REPORT_JSON__   → nội dung report.json
+      __HISTORY_JSON__  → nội dung history.json
+      __REPORT_MONTH__  → "YYYY-MM"
+      __REPORT_TITLE__  → "Báo cáo vĩ mô Việt Nam – Tháng X/YYYY"
+      __GENERATED_AT__  → ISO timestamp
+      __VERDICT__       → verdict text
+      __MONTH_BADGE__   → "Tháng X/YYYY"
+      __PERIOD_LINE__   → "Kỳ báo cáo: YYYY-MM · Chốt: DD/MM/YYYY · N/5 nguồn: ..."
     """
+    import calendar
     year, month = int(month_str[:4]), int(month_str[5:7])
-    title = f"Báo cáo vĩ mô Việt Nam – {VI_MONTHS[month]} {year}"
+    vi_month = VI_MONTHS[month]
+    title = f"Báo cáo vĩ mô Việt Nam – {vi_month} {year}"
     generated_at = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+    last_day = calendar.monthrange(year, month)[1]
+
+    # Đọc sources từ _meta
+    meta = report.get("_meta", {})
+    sources_count = meta.get("sources_available", 0)
+    sources_list  = meta.get("sources_list", [])
+    SRC_LABELS = {
+        "NSO": "TCTK", "PMI": "S&P PMI",
+        "Customs": "Hải quan", "VBMA": "HTT Trái phiếu", "VNBA": "HN Ngân hàng",
+    }
+    if sources_count == 5:
+        sources_badge = "5 nguồn: TCTK · Hải quan · S&amp;P PMI · HTT Trái phiếu · HN Ngân hàng"
+    else:
+        labels = [SRC_LABELS.get(s, s) for s in sources_list]
+        sources_badge = f"{sources_count}/5 nguồn: {' · '.join(labels)}"
+
+    month_badge  = f"{vi_month}/{year}"
+    period_line  = f"Kỳ báo cáo: {month_str} · Chốt dữ liệu: {last_day:02d}/{month:02d}/{year} · {sources_badge}"
 
     # Serialize JSON (compact cho embed)
-    report_js = json.dumps(report, ensure_ascii=False, separators=(",", ":"))
+    report_js  = json.dumps(report,  ensure_ascii=False, separators=(",", ":"))
     history_js = json.dumps(history, ensure_ascii=False, separators=(",", ":"))
 
     # Thay thế
     html = template_html
-    html = html.replace("__REPORT_JSON__", report_js)
-    html = html.replace("__HISTORY_JSON__", history_js)
-    html = html.replace("__REPORT_MONTH__", month_str)
-    html = html.replace("__REPORT_TITLE__", title)
-    html = html.replace("__GENERATED_AT__", generated_at)
-    html = html.replace("__VERDICT__", report.get("verdict", "N/A"))
+    html = html.replace("__REPORT_JSON__",   report_js)
+    html = html.replace("__HISTORY_JSON__",  history_js)
+    html = html.replace("__REPORT_MONTH__",  month_str)
+    html = html.replace("__REPORT_TITLE__",  title)
+    html = html.replace("__GENERATED_AT__",  generated_at)
+    html = html.replace("__VERDICT__",       report.get("verdict", "N/A"))
+    html = html.replace("__MONTH_BADGE__",   month_badge)
+    html = html.replace("__PERIOD_LINE__",   period_line)
 
     return html
 
