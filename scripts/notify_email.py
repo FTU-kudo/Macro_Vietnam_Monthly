@@ -2,7 +2,8 @@
 """
 scripts/notify_email.py
 ─────────────────────────────────────────────────────────────
-Gửi email thông báo kèm PDF báo cáo qua Gmail.
+Gửi email thông báo kèm PDF + HTML báo cáo qua Gmail.
+Repo private → không dùng link online, thay bằng đính kèm HTML.
 
 Secrets cần thiết trong GitHub repo:
   EMAIL_USER  — địa chỉ Gmail gửi đi (e.g. yourreport@gmail.com)
@@ -41,6 +42,7 @@ def build_success_email(
     sources: str,
     repo_url: str,
     has_pdf: bool = False,
+    has_html: bool = False,
 ) -> tuple[str, str]:
     """Tạo email subject + HTML body đẹp cho success."""
     year, m = int(month[:4]), int(month[5:7])
@@ -49,16 +51,35 @@ def build_success_email(
 
     subject = f"📊 [VN Macro] Báo cáo {vi_month} {year} · {sources}/5 nguồn"
 
-    # Dùng htmlpreview.github.io để render HTML (tránh 404 do GitHub blob viewer)
-    raw_url = f"{repo_url}/raw/main/vn-macro-monthly/{month}/report.html"
-    report_url = f"https://htmlpreview.github.io/?{raw_url}"
-    pdf_note = (
-        '<p style="color:#1e293b;font-size:13px;margin:12px 0 0;">'
-        '📎 <strong>File PDF đính kèm</strong> trong email này để đọc offline.</p>'
-        if has_pdf else
-        '<p style="color:#64748b;font-size:12px;margin:12px 0 0;">'
-        '(PDF không khả dụng lần này — xem báo cáo qua link bên dưới)</p>'
-    )
+    # Ghi chú đính kèm
+    if has_pdf and has_html:
+        attach_note = (
+            '<div style="margin-top:12px;padding:10px 14px;background:rgba(16,185,129,0.1);'
+            'border-radius:8px;border:1px solid rgba(16,185,129,0.25);">'
+            '<p style="color:#10b981;font-size:13px;margin:0;font-weight:600;">📎 Đính kèm trong email:</p>'
+            '<ul style="color:#94a3b8;font-size:12px;margin:6px 0 0;padding-left:16px;line-height:1.8;">'
+            '<li><strong style="color:#f1f5f9;">report.pdf</strong> — In &amp; lưu trữ</li>'
+            '<li><strong style="color:#f1f5f9;">report.html</strong> — Mở bằng Chrome/Edge để xem full dark theme + biểu đồ</li>'
+            '</ul></div>'
+        )
+    elif has_pdf:
+        attach_note = (
+            '<p style="color:#10b981;font-size:13px;margin:12px 0 0;">'
+            '📎 <strong>File PDF đính kèm</strong> trong email này để đọc offline.</p>'
+        )
+    elif has_html:
+        attach_note = (
+            '<div style="margin-top:12px;padding:10px 14px;background:rgba(6,182,212,0.08);'
+            'border-radius:8px;border:1px solid rgba(6,182,212,0.2);">'
+            '<p style="color:#06b6d4;font-size:13px;margin:0;font-weight:600;">📎 Đính kèm: report.html</p>'
+            '<p style="color:#94a3b8;font-size:12px;margin:4px 0 0;">Tải xuống → mở bằng Chrome/Edge để xem báo cáo đầy đủ với biểu đồ.</p>'
+            '</div>'
+        )
+    else:
+        attach_note = (
+            '<p style="color:#64748b;font-size:12px;margin:12px 0 0;">'
+            '(Tệp đính kèm không khả dụng lần này.)</p>'
+        )
 
     html = f"""<!DOCTYPE html>
 <html lang="vi">
@@ -104,26 +125,20 @@ def build_success_email(
       </tr>
     </table>
 
-    {pdf_note}
+    {attach_note}
   </div>
 
-  <!-- CTA -->
-  <div style="text-align:center;margin-bottom:16px;">
-    <a href="{report_url}"
-       style="display:inline-block;background:linear-gradient(135deg,#a855f7,#ec4899);
-              color:#fff;padding:12px 28px;border-radius:10px;text-decoration:none;
-              font-weight:700;font-size:14px;letter-spacing:0.3px;
-              box-shadow:0 4px 16px rgba(168,85,247,0.4);">
-      🌐 Xem báo cáo online →
-    </a>
-  </div>
-
-  <!-- Note về PDF -->
+  <!-- Hướng dẫn mở HTML -->
   <div style="background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.2);
               border-radius:10px;padding:14px 18px;margin-bottom:20px;">
-    <p style="color:#c4b5fd;font-size:12px;margin:0;line-height:1.6;">
-      💡 <strong>Lưu ý đọc PDF:</strong> Báo cáo dùng dark theme. Nếu PDF trông nhạt màu,
-      hãy kiểm tra cài đặt "In nền màu" (Print background graphics) trong PDF reader.
+    <p style="color:#c4b5fd;font-size:12px;margin:0;line-height:1.7;">
+      💡 <strong>Cách xem báo cáo đầy đủ:</strong>
+      Tải file <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:3px;">report.html</code>
+      đính kèm &rarr; mở bằng <strong>Chrome</strong> hoặc <strong>Edge</strong> &rarr; xem báo cáo
+      với biểu đồ tương tác và dark theme.<br>
+      <span style="color:#8b8ba7;font-size:11px;margin-top:4px;display:inline-block;">
+        PDF dùng để in ấn &amp; lưu trữ; HTML dùng để đọc trực tiếp trên máy tính.
+      </span>
     </p>
   </div>
 
@@ -176,8 +191,29 @@ def build_fail_email(month: str, sources: str) -> tuple[str, str]:
     return subject, html
 
 
-def send_email(subject: str, html_body: str, pdf_path: Path | None = None) -> bool:
-    """Gửi email qua Gmail SMTP, đính kèm PDF nếu có."""
+def attach_file(msg: MIMEMultipart, file_path: Path, mime_type: tuple,
+                max_mb: float = 24.0) -> bool:
+    """Dính kèm file vào email, trả về True nếu thành công."""
+    if not file_path.exists():
+        return False
+    size_mb = file_path.stat().st_size / (1024 * 1024)
+    if size_mb > max_mb:
+        print(f"  ⚠️  {file_path.name} quá lớn ({size_mb:.1f} MB > {max_mb} MB) — bỏ qua")
+        return False
+    with open(file_path, "rb") as f:
+        part = MIMEBase(*mime_type)
+        part.set_payload(f.read())
+    encoders.encode_base64(part)
+    part.add_header("Content-Disposition", f'attachment; filename="{file_path.name}"')
+    msg.attach(part)
+    print(f"  📎 Đính kèm: {file_path.name} ({size_mb:.1f} MB)")
+    return True
+
+
+def send_email(subject: str, html_body: str,
+               pdf_path: Path | None = None,
+               html_path: Path | None = None) -> bool:
+    """Gửi email qua Gmail SMTP, đính kèm PDF và/hoặc HTML nếu có."""
     user     = os.environ.get("EMAIL_USER", "")
     password = os.environ.get("EMAIL_PASS", "")
     to_raw   = os.environ.get("EMAIL_TO", "")
@@ -189,31 +225,21 @@ def send_email(subject: str, html_body: str, pdf_path: Path | None = None) -> bo
 
     recipients = [r.strip() for r in to_raw.split(",") if r.strip()]
 
-    # Dùng mixed để đính kèm PDF
     msg = MIMEMultipart("mixed")
     msg["Subject"] = subject
     msg["From"]    = f"VN Macro Bot <{user}>"
     msg["To"]      = ", ".join(recipients)
 
-    # Phần HTML body
+    # HTML body
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    # Đính kèm PDF nếu có
-    if pdf_path and pdf_path.exists():
-        size_mb = pdf_path.stat().st_size / (1024 * 1024)
-        if size_mb > 24:
-            print(f"  ⚠️  PDF quá lớn ({size_mb:.1f} MB > 24 MB) — không đính kèm")
-        else:
-            with open(pdf_path, "rb") as f:
-                part = MIMEBase("application", "pdf")
-                part.set_payload(f.read())
-            encoders.encode_base64(part)
-            part.add_header(
-                "Content-Disposition",
-                f'attachment; filename="{pdf_path.name}"',
-            )
-            msg.attach(part)
-            print(f"  📎 PDF đính kèm: {pdf_path.name} ({size_mb:.1f} MB)")
+    # Đính kèm PDF (nếu có, < 24 MB)
+    if pdf_path:
+        attach_file(msg, pdf_path, ("application", "pdf"), max_mb=24.0)
+
+    # Đính kèm HTML (nếu có, < 10 MB)
+    if html_path:
+        attach_file(msg, html_path, ("text", "html"), max_mb=10.0)
 
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
@@ -231,26 +257,32 @@ def send_email(subject: str, html_body: str, pdf_path: Path | None = None) -> bo
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Send email notification with PDF attachment")
-    parser.add_argument("--status",   required=True,
+    parser = argparse.ArgumentParser(description="Send email notification with PDF+HTML attachment")
+    parser.add_argument("--status",    required=True,
                         choices=["success", "preflight_fail"],
                         help="Loại email")
-    parser.add_argument("--month",    required=True, help="YYYY-MM")
-    parser.add_argument("--sources",  default="0",  help="Số nguồn available")
-    parser.add_argument("--repo-url", default="",   help="GitHub repo URL")
-    parser.add_argument("--pdf-path", default="",   help="Đường dẫn file PDF đính kèm")
+    parser.add_argument("--month",     required=True, help="YYYY-MM")
+    parser.add_argument("--sources",   default="0",   help="Số nguồn available")
+    parser.add_argument("--repo-url",  default="",    help="GitHub repo URL")
+    parser.add_argument("--pdf-path",  default="",    help="Đường dẫn file PDF đính kèm")
+    parser.add_argument("--html-path", default="",    help="Đường dận file HTML đính kèm")
     args = parser.parse_args()
 
-    pdf_path = Path(args.pdf_path) if args.pdf_path else None
+    pdf_path  = Path(args.pdf_path)  if args.pdf_path  else None
+    html_path = Path(args.html_path) if args.html_path else None
 
     if args.status == "success":
-        has_pdf = bool(pdf_path and pdf_path.exists())
-        subject, html = build_success_email(args.month, args.sources, args.repo_url, has_pdf)
+        has_pdf  = bool(pdf_path  and pdf_path.exists())
+        has_html = bool(html_path and html_path.exists())
+        subject, html = build_success_email(
+            args.month, args.sources, args.repo_url, has_pdf, has_html
+        )
     else:
         subject, html = build_fail_email(args.month, args.sources)
-        pdf_path = None   # Không đính kèm PDF khi fail
+        pdf_path  = None
+        html_path = None
 
-    send_email(subject, html, pdf_path)
+    send_email(subject, html, pdf_path, html_path)
 
 
 if __name__ == "__main__":

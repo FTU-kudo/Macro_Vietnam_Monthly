@@ -39,7 +39,9 @@ def export_pdf(html_path: Path, pdf_path: Path) -> bool:
             args=[
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",   # quan trọng cho Docker/CI
+                "--disable-dev-shm-usage",
+                "--disable-web-security",       # cho phép load local resources
+                "--disable-features=VizDisplayCompositor",
             ]
         )
         page = browser.new_page(viewport={"width": 1440, "height": 900})
@@ -47,23 +49,70 @@ def export_pdf(html_path: Path, pdf_path: Path) -> bool:
         # Load file HTML local
         page.goto(f"file://{html_abs}", wait_until="networkidle", timeout=60000)
 
-        # Đợi Chart.js render xong (nếu có)
-        try:
-            page.wait_for_timeout(2000)
-        except Exception:
-            pass
+        # Đợi Chart.js và fonts load
+        page.wait_for_timeout(2500)
 
-        # Xuất PDF
+        # ── Inject JS: chuẩn bị layout cho PDF ──────────────────────────
+        page.evaluate("""() => {
+            // 1. Ẩn navigation tabs (không cần trong PDF)
+            document.querySelectorAll('.nav-tabs').forEach(el => {
+                el.style.display = 'none';
+            });
+
+            // 2. Hiện TẤT CẢ group sections (không chỉ tab đang active)
+            document.querySelectorAll('.group-section').forEach(el => {
+                el.style.display = 'block';
+                el.style.animation = 'none';
+                el.style.opacity = '1';
+                el.style.transform = 'none';
+                el.classList.add('active');
+            });
+
+            // 3. Đóng tất cả modals
+            document.querySelectorAll('.modal').forEach(el => {
+                el.style.display = 'none';
+            });
+
+            // 4. Thêm CSS page-break cho print
+            const style = document.createElement('style');
+            style.textContent = `
+                .data-card, .kpi, .highlight-box, .panel {
+                    page-break-inside: avoid !important;
+                    break-inside: avoid !important;
+                }
+                .group-header {
+                    page-break-after: avoid !important;
+                    break-after: avoid !important;
+                }
+                .group-section {
+                    page-break-before: auto !important;
+                    margin-bottom: 32px !important;
+                }
+                .data-card:hover {
+                    transform: none !important;
+                }
+            `;
+            document.head.appendChild(style);
+
+            // 5. Scroll về đầu trang
+            window.scrollTo(0, 0);
+        }""")
+
+        # Đợi thêm cho charts render sau khi sections được hiện
+        page.wait_for_timeout(2500)
+
+        # Xuất PDF với scale thu nhỏ để giảm file size và cải thiện layout
         page.pdf(
             path=str(pdf_path),
             format="A4",
             landscape=False,
             print_background=True,   # GIỮ dark theme + màu sắc
+            scale=0.78,              # Thu nhỏ để vừa trang A4, giảm file size
             margin={
-                "top": "12mm",
-                "bottom": "12mm",
-                "left": "10mm",
-                "right": "10mm",
+                "top": "10mm",
+                "bottom": "10mm",
+                "left": "8mm",
+                "right": "8mm",
             },
         )
 
@@ -72,6 +121,7 @@ def export_pdf(html_path: Path, pdf_path: Path) -> bool:
     size_mb = pdf_path.stat().st_size / (1024 * 1024)
     print(f"  ✅ PDF → {pdf_path.name} ({size_mb:.1f} MB)")
     return True
+
 
 
 def main():

@@ -315,6 +315,46 @@ footer a{color:var(--purple);text-decoration:none}
   .panel{grid-column:span 1}
   .nav-tab{padding:7px 12px;font-size:12px}
 }
+
+/* ── PRINT / PDF ──────────────────────────────────────────── */
+@media print {
+  /* Ẩn các element không cần trong PDF */
+  .nav-tabs, .dc-chart-btn, .modal, .chart-modal,
+  .nav-tab, footer .disclaimer { display: none !important; }
+
+  /* Hiện TẤT CẢ group sections (không chỉ tab active) */
+  .group-section {
+    display: block !important;
+    page-break-before: auto;
+    margin-bottom: 28px;
+  }
+
+  /* Tránh ngắt trang bên trong card/kpi */
+  .data-card, .kpi, .highlight-box, .panel,
+  .pmi-card, .special-insight, .rc-item {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Group header không bị tách khỏi nội dung */
+  .group-header, .dc-name {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  /* Tắt hover effects */
+  .data-card:hover { transform: none !important; }
+
+  /* Đảm bảo màu nền và gradient in đúng */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Body background */
+  body { background: #0a0a14 !important; }
+  .container { padding: 16px 20px !important; }
+}
 </style>
 </head>
 <body>

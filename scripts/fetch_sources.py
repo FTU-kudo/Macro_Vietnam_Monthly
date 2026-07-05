@@ -358,14 +358,21 @@ def fetch_vbma(year: int, month: int, cache_dir: Path) -> dict:
     pdf_out = cache_dir / f"vbma_{year}-{month:02d}.pdf"
     txt_out = cache_dir / f"vbma_{year}-{month:02d}.txt"
 
-    # ── Strategy 1: Scrape trang báo cáo để lấy link PDF mới nhất ──────
+    # ── Strategy 1: Scrape trang báo cáo bằng Session + Referer ──────────
+    vbma_session = requests.Session()
+    vbma_session.headers.update({
+        **HEADERS,
+        "Referer": "https://vbma.org.vn/",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    })
     report_pages = [
         "https://vbma.org.vn/bao-cao",
         "https://vbma.org.vn/bao-cao?page=1",
+        "https://vbma.org.vn/en/reports",
     ]
     for page_url in report_pages:
         try:
-            r = requests.get(page_url, headers=HEADERS, timeout=TIMEOUT)
+            r = vbma_session.get(page_url, timeout=TIMEOUT)
             if r.status_code != 200:
                 continue
             soup = BeautifulSoup(r.text, "html.parser")
@@ -373,22 +380,21 @@ def fetch_vbma(year: int, month: int, cache_dir: Path) -> dict:
                 href = a["href"]
                 href_up = href.upper()
                 link_text = a.get_text(strip=True).upper()
-                # Tìm link có chứa tên tháng + năm hoặc từ khoá TTTP/BAO CAO TUAN
                 is_report = (
                     "TTTP" in href_up or "BAO_CAO_TUAN" in href_up or "BAO CAO TUAN" in href_up
                     or "TTTP" in link_text or "BÁO CÁO TUẦN" in link_text
+                    or "WEEKLY" in href_up or "BOND" in href_up
                 )
-                is_month = str(year) in href or en_abbr.upper() in href_up
                 if is_report and ".PDF" in href_up:
                     pdf_url = href if href.startswith("http") else f"https://vbma.org.vn{href}"
                     try:
-                        r2 = requests.get(pdf_url, headers=HEADERS, timeout=TIMEOUT, stream=True)
+                        r2 = vbma_session.get(pdf_url, timeout=TIMEOUT, stream=True)
                         if r2.status_code == 200 and "pdf" in r2.headers.get("content-type", "").lower():
                             with open(pdf_out, "wb") as f:
                                 for chunk in r2.iter_content(chunk_size=8192):
                                     f.write(chunk)
                             size = pdf_out.stat().st_size
-                            if size > 1024:  # ít nhất 1KB
+                            if size > 1024:
                                 print(f"     ✅ VBMA (scraped) → {pdf_out.name} ({size:,} bytes)")
                                 if pdf_to_text(pdf_out, txt_out):
                                     return {
@@ -402,39 +408,60 @@ def fetch_vbma(year: int, month: int, cache_dir: Path) -> dict:
         except Exception:
             continue
 
-    # ── Strategy 2: Thử URL pattern cứng (các biến thể ngày cuối tháng) ──
+    # ── Strategy 2: URL pattern cứng — nhiều biến thể folder + tên file ──
     import calendar
-    week_ranges = [
-        (25, 29), (24, 28), (26, 30), (27, 31), (23, 27), (22, 26), (28, 31),
+    # Thử tất cả các tuần trong tháng (không chỉ tuần cuối)
+    all_week_ranges = []
+    last_day = calendar.monthrange(year, month)[1]
+    # Sinh các khoảng tuần từ đầu đến cuối tháng
+    for start in range(1, last_day - 2):
+        for length in [4, 5, 6]:
+            end = min(start + length, last_day)
+            if end - start >= 3:
+                all_week_ranges.append((start, end))
+    # Ưu tiên tuần cuối tháng
+    priority_ranges = [(25, 29), (24, 28), (26, 30), (27, 31), (23, 27), (22, 26), (28, 31)]
+    priority_ranges = [(s, min(e, last_day)) for s, e in priority_ranges]
+    all_week_ranges = priority_ranges + [r for r in all_week_ranges if r not in priority_ranges]
+
+    # Thử nhiều biến thể folder + tên file
+    EN_MONTHS_FULL = {
+        1: "January", 2: "February", 3: "March", 4: "April",
+        5: "May", 6: "June", 7: "July", 8: "August",
+        9: "September", 10: "October", 11: "November", 12: "December",
+    }
+    folder_variants = [
+        en_abbr,                          # "Mar"
+        EN_MONTHS_FULL[month],            # "March"
+        en_abbr.upper(),                  # "MAR"
+        EN_MONTHS_FULL[month].upper(),    # "MARCH"
+        en_abbr.lower(),                  # "mar"
     ]
-    # Thử nhiều biến thể tên file (1 space, 2 space, chữ thường)
-    url_templates = [
-        lambda s, e: (
-            f"https://vbma.org.vn/storage/reports/"
-            f"{en_abbr}{year}/"
-            f"{s:02d}{month:02d}{year}-{e:02d}{month:02d}{year}"
-            f"%20%20BAO%20CAO%20TUAN%20TTTP.pdf"
-        ),
-        lambda s, e: (
-            f"https://vbma.org.vn/storage/reports/"
-            f"{en_abbr}{year}/"
-            f"{s:02d}{month:02d}{year}-{e:02d}{month:02d}{year}"
-            f"%20BAO%20CAO%20TUAN%20TTTP.pdf"
-        ),
-        lambda s, e: (
-            f"https://vbma.org.vn/storage/reports/"
-            f"{en_abbr}{year}/"
-            f"{s:02d}{month:02d}{year}-{e:02d}{month:02d}{year}"
-            f"_BAO_CAO_TUAN_TTTP.pdf"
-        ),
-    ]
-    for start, end in week_ranges:
-        last_day = calendar.monthrange(year, month)[1]
-        end = min(end, last_day)
-        for tmpl in url_templates:
-            pdf_url = tmpl(start, end)
+
+    def make_vbma_urls(s: int, e: int) -> list:
+        urls = []
+        for folder in folder_variants:
+            base = f"https://vbma.org.vn/storage/reports/{folder}{year}/"
+            date_str = f"{s:02d}{month:02d}{year}-{e:02d}{month:02d}{year}"
+            # Các biến thể tên file
+            suffixes = [
+                "%20%20BAO%20CAO%20TUAN%20TTTP.pdf",
+                "%20BAO%20CAO%20TUAN%20TTTP.pdf",
+                "_BAO_CAO_TUAN_TTTP.pdf",
+                "%20BAO%20CAO%20TUAN%20TTTP%20.pdf",
+                "-BAO-CAO-TUAN-TTTP.pdf",
+            ]
+            for sfx in suffixes:
+                urls.append(base + date_str + sfx)
+        return urls
+
+    for start, end in all_week_ranges:
+        if start < 1 or end < 1:
+            continue
+        for pdf_url in make_vbma_urls(start, end):
             try:
-                r = requests.get(pdf_url, headers=HEADERS, timeout=TIMEOUT, stream=True)
+                r = requests.get(pdf_url, headers={**HEADERS, "Referer": "https://vbma.org.vn/"},
+                                 timeout=TIMEOUT, stream=True)
                 ct = r.headers.get("content-type", "")
                 if r.status_code == 200 and "pdf" in ct.lower():
                     with open(pdf_out, "wb") as f:
@@ -454,6 +481,7 @@ def fetch_vbma(year: int, month: int, cache_dir: Path) -> dict:
                 continue
 
     return {"source": source, "status": "FAIL", "error": "Không tải được VBMA PDF"}
+
 
 
 def fetch_vnba(year: int, month: int, cache_dir: Path) -> dict:
