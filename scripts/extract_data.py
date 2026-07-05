@@ -205,6 +205,8 @@ def extract_with_gemini(user_prompt: str) -> dict:
             response_mime_type="application/json",
         ),
     )
+    raw_text = response.text.strip()
+
     # Làm sạch markdown code blocks nếu có
     if "```" in raw_text:
         match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw_text, re.DOTALL)
