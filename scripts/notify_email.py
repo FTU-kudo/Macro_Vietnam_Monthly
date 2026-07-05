@@ -233,7 +233,9 @@ def send_email(subject: str, html_body: str,
     msg = MIMEMultipart("mixed")
     msg["Subject"] = subject
     msg["From"]    = f"VN Macro Bot <{user}>"
-    msg["To"]      = ", ".join(recipients)
+    # Gửi dạng BCC để bảo mật danh sách khách hàng (không ai thấy email của người khác)
+    # Trong header To: chỉ để tên và email của chính bot/người gửi, danh sách recipients thực tế được truyền ngầm vào server.sendmail()
+    msg["To"]      = f"VN Macro Report <{user}>"
 
     # HTML body
     msg.attach(MIMEText(html_body, "html", "utf-8"))
