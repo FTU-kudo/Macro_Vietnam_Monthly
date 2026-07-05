@@ -91,19 +91,20 @@ def inject_data_into_template(
                 star = tk.get("star", idx == 0)
             elif isinstance(tk, str):
                 text = tk
-                star = (idx == 0)
+                star = (idx == 0 and "⭐" in text) or (idx == 0)
             else:
                 text = str(tk)
                 star = (idx == 0)
             
-            # Làm sạch nếu bị dính icon cũ
-            text = text.lstrip("⭐ ")
+            if star and not text.startswith("⭐"):
+                text = f"<strong>⭐ Điểm nhấn {idx+1}:</strong> {text}"
+            elif not text.startswith("⭐") and not text.startswith("<strong>"):
+                text = f"<strong>Điểm nhấn {idx+1}:</strong> {text}"
             
-            li_class = ' class="star"' if star else ''
-            takeaways_html_parts.append(f"<li{li_class}>{text}</li>")
+            takeaways_html_parts.append(f"<li>{text}</li>")
         takeaways_html = "\n      ".join(takeaways_html_parts)
     else:
-        takeaways_html = f'<li class="star">{report.get("verdict_reason", "Chưa có thông tin tổng hợp.")}</li>'
+        takeaways_html = f"<li><strong>⭐ Tổng quan:</strong> {report.get('verdict_reason', 'Chưa có thông tin tổng hợp.')}</li>"
 
     # Thay thế
     html = template_html
