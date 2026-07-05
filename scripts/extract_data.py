@@ -205,19 +205,31 @@ def extract_with_gemini(user_prompt: str) -> dict:
             response_mime_type="application/json",
         ),
     )
-    raw_text = response.text.strip()
-
-    # Làm sạch phòng hờ (bỏ ```json nếu có)
-    raw_text = re.sub(r"^```json\s*", "", raw_text)
-    raw_text = re.sub(r"```\s*$", "", raw_text).strip()
+    # Làm sạch markdown code blocks nếu có
+    if "```" in raw_text:
+        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw_text, re.DOTALL)
+        if match:
+            raw_text = match.group(1).strip()
+        else:
+            raw_text = re.sub(r"^```json\s*", "", raw_text)
+            raw_text = re.sub(r"```\s*$", "", raw_text).strip()
 
     try:
         data = json.loads(raw_text)
         print(f"  ✅ JSON parsed OK ({len(raw_text):,} chars)")
         return data
     except json.JSONDecodeError as e:
-        print(f"  ❌ JSON parse error: {e}")
+        print(f"  ⚠️ Direct JSON parse failed: {e}. Trying raw_decode robust extraction...")
+        try:
+            start_idx = raw_text.find('{')
+            if start_idx != -1:
+                data, _ = json.JSONDecoder().raw_decode(raw_text, start_idx)
+                print(f"  ✅ JSON parsed OK via robust raw_decode from index {start_idx}")
+                return data
+        except Exception as e2:
+            print(f"  ❌ Robust JSON parse failed: {e2}")
         print(f"  Raw (first 500): {raw_text[:500]}")
+        print(f"  Raw (last 500): {raw_text[-500:]}")
         raise
 
 
