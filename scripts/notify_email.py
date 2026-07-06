@@ -278,7 +278,13 @@ def main():
 
     pdf_path  = Path(args.pdf_path)  if args.pdf_path  else None
     html_path = Path(args.html_path) if args.html_path else None
-    
+    if not pdf_path or not pdf_path.exists():
+        cand = Path("output") / f"Báo cáo Vĩ mô Việt Nam - Tháng {int(args.month[5:7]) if len(args.month)>=7 else 6}.{args.month[:4] if len(args.month)>=4 else '2026'}.pdf"
+        if cand.exists(): pdf_path = cand
+    if not html_path or not html_path.exists():
+        cand = Path("output") / f"Báo cáo Vĩ mô Việt Nam - Tháng {int(args.month[5:7]) if len(args.month)>=7 else 6}.{args.month[:4] if len(args.month)>=4 else '2026'}.html"
+        if cand.exists(): html_path = cand
+
     sources = args.sources
     # Nếu có file report.json, ưu tiên lấy chính xác số nguồn thực tế từ file report.json để đồng bộ 100% với PDF/HTML
     report_path = Path(args.report) if args.report else Path(f"vn-macro-monthly/{args.month}/report.json")

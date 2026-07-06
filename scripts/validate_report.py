@@ -43,6 +43,8 @@ def validate_report(month: str, json_path: Path = None, html_path: Path = None) 
 
     if not html_path:
         html_candidates = [
+            Path(f"output/Báo cáo Vĩ mô Việt Nam - Tháng 6.2026.html"),
+            Path(f"output/report.html"),
             Path(f"vn-macro-monthly/{month}/Báo cáo Vĩ mô Việt Nam - Tháng 6.2026.html"),
             Path("Báo cáo Vĩ mô Việt Nam - Tháng 6.2026.html"),
             Path(f"vn-macro-monthly/{month}/report.html"),

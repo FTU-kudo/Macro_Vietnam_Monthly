@@ -1,4 +1,6 @@
-# 📊 vn-macro-monthly — Báo cáo vĩ mô Việt Nam hàng tháng
+# 📊 Macro_Vietnam_Monthly — Báo cáo vĩ mô Việt Nam hàng tháng
+
+**Nguồn tham khảo:** *https://github.com/Thanhtran-165/vimovietnam*
 
 Skill tạo **báo cáo vĩ mô VN monthly** toàn diện 41 chỉ số từ 5 nguồn chính thức (NSO + Customs + S&P PMI + VBMA + VNBA). Bao phủ 4 trụ cột: sản xuất + ngoại thương + tiền tệ + tài chính.
 

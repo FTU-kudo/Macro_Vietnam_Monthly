@@ -230,13 +230,15 @@ jobs:
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
           REPORT_FILENAME: ${{ env.REPORT_FILENAME }}
         run: |
+          mkdir -p output
           python scripts/render_report.py \
             --month "$REPORT_MONTH" \
             --report "vn-macro-monthly/$REPORT_MONTH/report.json" \
             --history "vn-macro-monthly/history.json" \
             --template "assets/report_template.html" \
-            --output "vn-macro-monthly/$REPORT_MONTH/${REPORT_FILENAME}.html"
-          echo "✅ report HTML rendered: ${REPORT_FILENAME}.html"
+            --output "output/${REPORT_FILENAME}.html"
+          cp "output/${REPORT_FILENAME}.html" "vn-macro-monthly/$REPORT_MONTH/report.html" 2>/dev/null || true
+          echo "✅ report HTML rendered: output/${REPORT_FILENAME}.html"
 
       - name: Install Playwright Chromium (for PDF export)
         if: steps.check-existing.outputs.skip != 'true' && steps.check-new-data.outputs.skip_rest != 'true'
@@ -252,16 +254,17 @@ jobs:
           REPORT_FILENAME: ${{ env.REPORT_FILENAME }}
         run: |
           python scripts/html_to_pdf.py \
-            --html "vn-macro-monthly/$REPORT_MONTH/${REPORT_FILENAME}.html" \
-            --output "vn-macro-monthly/$REPORT_MONTH/${REPORT_FILENAME}.pdf"
-          echo "✅ PDF exported: ${REPORT_FILENAME}.pdf"
+            --html "output/${REPORT_FILENAME}.html" \
+            --output "output/${REPORT_FILENAME}.pdf"
+          cp "output/${REPORT_FILENAME}.pdf" "vn-macro-monthly/$REPORT_MONTH/report.pdf" 2>/dev/null || true
+          echo "✅ PDF exported: output/${REPORT_FILENAME}.pdf"
 
       - name: Commit report to repository
         if: steps.check-existing.outputs.skip != 'true' && steps.check-new-data.outputs.skip_rest != 'true'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "VN Macro Bot"
-          git add vn-macro-monthly/
+          git add vn-macro-monthly/ output/
           if git diff --staged --quiet; then
             echo "⚠️ No changes to commit"
           else
@@ -280,8 +283,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vn-macro-report-${{ env.REPORT_MONTH }}
-          path: vn-macro-monthly/${{ env.REPORT_MONTH }}/
+          path: |
+            vn-macro-monthly/${{ env.REPORT_MONTH }}/
+            output/
           retention-days: 90
+
 
   notify:
     name: 📧 Send Email Notification
@@ -304,7 +310,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.generate-report.outputs.artifact_name }}
-          path: vn-macro-monthly/${{ needs.generate-report.outputs.report_month }}/
+          path: .
         continue-on-error: true   # không fail notify nếu artifact không tồn tại
 
       - name: Send SUCCESS email
@@ -323,8 +329,8 @@ jobs:
             --month "$REPORT_MONTH" \
             --sources "$SOURCES_FOUND" \
             --repo-url "$REPO_URL" \
-            --pdf-path "vn-macro-monthly/$REPORT_MONTH/${FNAME}.pdf" \
-            --html-path "vn-macro-monthly/$REPORT_MONTH/${FNAME}.html" \
+            --pdf-path "output/${FNAME}.pdf" \
+            --html-path "output/${FNAME}.html" \
             --report "vn-macro-monthly/$REPORT_MONTH/report.json"
 
       - name: Send FAILURE email

@@ -252,11 +252,16 @@ Kết quả: `✅ PASS` → done | `⚠️ WARNINGS` → review | `❌ FAIL` →
 
 ### File cuối cùng
 ```
+{project}/output/
+├── Báo cáo Vĩ mô Việt Nam - Tháng X.YYYY.html   ← bản trình bày HTML chính thức
+└── Báo cáo Vĩ mô Việt Nam - Tháng X.YYYY.pdf    ← bản in PDF chính thức
+
 {project}/vn-macro-monthly/
 ├── history.json              ← chuỗi thời gian (append mỗi tháng)
 ├── 2026-05/
 │   ├── report.json           ← data structured (nguồn dữ liệu chuẩn)
-│   ├── report.html           ← dashboard cuối cùng
+│   ├── report.html           ← dashboard sao lưu trong thư mục tháng
+
 │   └── sources_cache/
 │       ├── pmi_may_2026.html
 │       ├── nso_may_2026.html
