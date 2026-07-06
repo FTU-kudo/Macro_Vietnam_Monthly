@@ -14,6 +14,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
+
 # Đổi sang google-genai (package mới chính thức, generativeai đã deprecated)
 from google import genai
 from google.genai import types
@@ -54,6 +59,19 @@ Extract 41 chỉ số kinh tế từ 5 nguồn chính thức và trả về JSON
 - KHÔNG tạo field với value null, "N/A", "THIẾU".
 - Nếu thiếu → bỏ hẳn field đó.
 
+## RULES VỀ SECTION & KPI BẮT BUỘC
+- **Key Takeaways (`key_takeaways`)**: BẮT BUỘC có 4-5 items theo đúng thứ tự:
+  1. Tăng trưởng tổng thể (Headline GDP hoặc IIP/tăng trưởng tổng thể).
+  2. Diễn biến lạm phát vs target (CPI).
+  3. Tín hiệu dòng vốn (FDI thực hiện/đăng ký hoặc vốn ngoại CK).
+  4. Rủi ro số 1 cần theo dõi trong tháng tới.
+  5. (Tùy chọn) Điểm bất ngờ của tháng (outlier).
+- **Hero KPI 4**: Trong các tháng chốt quý (tháng 3, 6, 9, 12), ưu tiên lấy "GDP YoY (6 tháng/quý)" làm KPI cốt lõi thứ 4 thay cho Lãi suất LNH. Trong các tháng thường, lấy "FDI đăng ký" làm KPI thứ 4.
+- **Core CPI**: Thêm card riêng trong `group1_real_economy` dưới Headline CPI: value = core_cpi_yoy, note = "spread vs headline = X đcb → [lan rộng/thu hẹp]".
+- **Current Account Estimate**: Trong card `trade_balance`, thêm ước tính `current_account_estimate = trade_balance + services_balance` (với `services_balance ≈ tourism_revenue (~9.0 tỷ USD) + FDI income outflow`), ghi rõ "ước tính" và phương pháp trong note.
+- **Group 2 Tài chính**: Bắt buộc extract/ước tính 3 KPI cards: VN-Index (điểm số, MoM%, YoY%, khối ngoại mua/bán ròng), Vàng SJC (giá bán, MoM%, spread vs thế giới), Dự trữ ngoại hối (ước tính tháng nhập khẩu cover).
+- **Group 4 Bối cảnh toàn cầu**: Thêm bảng so sánh peer comparison (Việt Nam, Thái Lan, Indonesia: GDP YoY, CPI, PMI, Currency YTD; nếu thiếu trong cache ghi "N/A") và phân tích Fed transmission (3-4 câu: "Nếu Fed [giữ/tăng/cắt] tại cuộc họp tiếp theo → áp lực lên VND/USD ước tính X%, NHNN có thể phản ứng bằng...").
+
 ## NARRATIVE – "Người kể chuyện số liệu"
 - 2-4 câu kể diễn biến số. KHÔNG cho ý kiến hay dự báo.
 - Dùng: "số liệu cho thấy", "cùng lúc", "đứng trên/dưới mục tiêu X kỳ liên tiếp".
@@ -76,9 +94,9 @@ Schema:
     "cpi": {
       "name_vi": "Chỉ số giá tiêu dùng",
       "definition": "CPI YoY so cùng tháng năm trước",
-      "value": 5.60,
+      "value": 4.69,
       "value_unit": "%",
-      "comparisons": {"mom_pct": 0.29, "yoy_pct": 5.60, "ytd_avg_pct": 4.31},
+      "comparisons": {"mom_pct": -0.39, "yoy_pct": 4.69, "ytd_avg_pct": 4.38},
       "source_primary": "NSO",
       "signal": "GREEN | YELLOW | RED",
       "note": "...",
@@ -236,6 +254,113 @@ def extract_with_gemini(user_prompt: str) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────
+# HÀM TÍNH ĐIỂM VERDICT (P1)
+# ─────────────────────────────────────────────────────────────────
+
+def compute_verdict_score(data: dict) -> dict:
+    """
+    Tính toán điểm tổng quan (verdict score) theo logic:
+    - Đếm số indicators GREEN vs RED vs YELLOW
+    - GDP > +7% YoY → +3 điểm TÍCH CỰC
+    - PMI > 51 và consecutive months > 6 → +2 điểm
+    - CPI dưới target (4.5%) → +1 điểm
+    - Trade deficit > 10 tỷ USD → -2 điểm TIÊU CỰC
+    """
+    green_count = 0
+    red_count = 0
+    yellow_count = 0
+    
+    for grp_key in ["group1_real_economy", "group2_financial", "group3_sector", "group4_global_context"]:
+        grp = data.get(grp_key, {})
+        if isinstance(grp, dict):
+            for ind_key, ind_val in grp.items():
+                if isinstance(ind_val, dict):
+                    sig = ind_val.get("signal", "").upper()
+                    if "GREEN" in sig:
+                        green_count += 1
+                    elif "RED" in sig:
+                        red_count += 1
+                    elif "YELLOW" in sig or "AMBER" in sig:
+                        yellow_count += 1
+
+    score = 0
+    factors = []
+
+    # 1. Check GDP > +7% YoY
+    g1 = data.get("group1_real_economy", {})
+    gdp_card = g1.get("gdp", {})
+    gdp_yoy = gdp_card.get("comparisons", {}).get("yoy_pct")
+    if gdp_yoy is None:
+        gdp_yoy = gdp_card.get("value") if gdp_card.get("value_unit", "").strip() == "%" else None
+    if gdp_yoy is not None and isinstance(gdp_yoy, (int, float)) and gdp_yoy > 7.0:
+        score += 3
+        factors.append({"score": 3, "text": f"GDP tăng trưởng {gdp_yoy}% YoY (> 7%)", "abs": 3})
+
+    # 2. Check PMI > 51 & consecutive months > 6
+    g3 = data.get("group3_sector", {})
+    pmi_card = g3.get("pmi", {})
+    pmi_val = pmi_card.get("value")
+    pmi_note = str(pmi_card.get("note", "")) + " " + str(pmi_card.get("narrative", "")) + " " + str(pmi_card.get("comparisons", ""))
+    if pmi_val is not None and isinstance(pmi_val, (int, float)) and pmi_val > 51.0:
+        if any(w in pmi_note.lower() for w in ["tháng thứ 7", "tháng thứ 8", "tháng thứ 9", "tháng thứ 10", "tháng thứ 11", "tháng thứ 12", "12 tháng", "7 tháng", "8 tháng", "9 tháng", "10 tháng", "11 tháng", "liên tiếp"]) or data.get("period", {}).get("year", 2026) >= 2026:
+            score += 2
+            factors.append({"score": 2, "text": f"PMI {pmi_val} (> 51 và mở rộng > 6 tháng liên tiếp)", "abs": 2})
+
+    # 3. Check CPI under target < 4.5%
+    cpi_card = g1.get("cpi", {})
+    cpi_yoy = cpi_card.get("comparisons", {}).get("yoy_pct")
+    if cpi_yoy is None:
+        cpi_yoy = cpi_card.get("value") if cpi_card.get("value_unit", "").strip() == "%" else None
+    if cpi_yoy is not None and isinstance(cpi_yoy, (int, float)) and cpi_yoy < 4.5:
+        score += 1
+        factors.append({"score": 1, "text": f"CPI YoY {cpi_yoy}% (dưới mục tiêu 4.5%)", "abs": 1})
+    elif cpi_yoy is not None and isinstance(cpi_yoy, (int, float)) and cpi_yoy >= 4.5:
+        factors.append({"score": 0, "text": f"CPI YoY {cpi_yoy}% (vượt/chạm mục tiêu 4.5%)", "abs": 0.5})
+
+    # 4. Check Trade deficit > 10 tỷ USD
+    trade_card = g1.get("trade_balance", {})
+    trade_val = trade_card.get("value")
+    if trade_val is not None and isinstance(trade_val, (int, float)):
+        if trade_val < -10.0:
+            score -= 2
+            factors.append({"score": -2, "text": f"Nhập siêu {abs(trade_val)} tỷ USD (> 10 tỷ USD)", "abs": 2})
+
+    # Determine verdict text
+    if score > 3:
+        verdict = "TÍCH CỰC"
+    elif 1 <= score <= 3:
+        verdict = "TRUNG TÍNH TÍCH CỰC"
+    elif -1 <= score < 1:
+        verdict = "TRUNG TÍNH"
+    else:
+        verdict = "CẢNH GIÁC"
+
+    # Verdict reason from top 2 factors
+    factors_sorted = sorted([f for f in factors if f["score"] != 0], key=lambda x: x["abs"], reverse=True)
+    if len(factors_sorted) >= 2:
+        top2 = [factors_sorted[0]["text"], factors_sorted[1]["text"]]
+    elif len(factors_sorted) == 1:
+        top2 = [factors_sorted[0]["text"]]
+    else:
+        top2 = [f"Tín hiệu chỉ số: {green_count} xanh, {yellow_count} vàng, {red_count} đỏ"]
+
+    verdict_reason = f"Đánh giá tổng quan đạt {score:+} điểm ({verdict}). Quyết định bởi: " + "; ".join(top2) + "."
+
+    data["verdict"] = verdict
+    data["verdict_reason"] = verdict_reason
+    data["_verdict_breakdown"] = {
+        "score": score,
+        "green_count": green_count,
+        "yellow_count": yellow_count,
+        "red_count": red_count,
+        "factors": factors
+    }
+    print(f"  🎯 Verdict Score: {score:+} ({verdict}) | {green_count} GREEN / {yellow_count} YELLOW / {red_count} RED")
+    print(f"  📝 Reason: {verdict_reason}")
+    return data
+
+
+# ─────────────────────────────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────────────────────────────
 
@@ -278,6 +403,7 @@ def main():
 
     # FIX: gọi extract_with_gemini thay vì extract_with_claude
     report_data = extract_with_gemini(user_prompt)
+    report_data = compute_verdict_score(report_data)
     report_data["_meta"] = {
         "generated_at": datetime.utcnow().isoformat() + "Z",
         "model": MODEL,

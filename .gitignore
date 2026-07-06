@@ -10,3 +10,7 @@ sources_cache/*.txt
 # Vercel
 .vercel/
 node_modules/
+
+# Python
+__pycache__/
+*.pyc
