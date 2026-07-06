@@ -71,6 +71,12 @@ Extract 41 chỉ số kinh tế từ 5 nguồn chính thức và trả về JSON
 - **Current Account Estimate**: Trong card `trade_balance`, thêm ước tính `current_account_estimate = trade_balance + services_balance` (với `services_balance ≈ tourism_revenue (~9.0 tỷ USD) + FDI income outflow`), ghi rõ "ước tính" và phương pháp trong note.
 - **Group 2 Tài chính**: Bắt buộc extract/ước tính 3 KPI cards: VN-Index (điểm số, MoM%, YoY%, khối ngoại mua/bán ròng), Vàng SJC (giá bán, MoM%, spread vs thế giới), Dự trữ ngoại hối (ước tính tháng nhập khẩu cover).
 - **Group 4 Bối cảnh toàn cầu**: Thêm bảng so sánh peer comparison (Việt Nam, Thái Lan, Indonesia: GDP YoY, CPI, PMI, Currency YTD; nếu thiếu trong cache ghi "N/A") và phân tích Fed transmission (3-4 câu: "Nếu Fed [giữ/tăng/cắt] tại cuộc họp tiếp theo → áp lực lên VND/USD ước tính X%, NHNN có thể phản ứng bằng...").
+- **Special Insights (`special_insights`)**: BẮT BUỘC tổng hợp và trích xuất 5 chuyên đề chuyên sâu từ 5 nguồn tin thô: `inflation`, `trade`, `liquidity`, `production`, `retail`. Với mỗi chuyên đề, trích xuất:
+  - `title`: Tiêu đề chuyên sâu hấp dẫn kèm emoji (ví dụ: "🔥 Lạm phát: CPI hạ nhiệt về 4.69%...").
+  - `summary`: Tóm tắt 1 dòng súc tích.
+  - `numbers_narrative`: Phân tích định lượng sâu sắc 3-4 câu (có so sánh cùng kỳ, lạm phát thực vs danh nghĩa...).
+  - `news_items`: Danh sách tối đa 3 bài báo/nhận định (gồm `title`, `url`, `source`, `sentiment`: "TIÊU CỰC" | "TRUNG TÍNH" | "TÍCH CỰC", và `insight`: tóm tắt 1 câu).
+  - `cross_story`: Phân tích góc nhìn rộng hơn (liên kết đa chiều với Fed, tỷ giá, chi phí DN...).
 
 ## NARRATIVE – "Người kể chuyện số liệu"
 - 2-4 câu kể diễn biến số. KHÔNG cho ý kiến hay dự báo.
@@ -110,6 +116,21 @@ Schema:
   "risks": [{"level": "HIGH | MEDIUM | LOW", "description": "..."}],
   "catalysts": [{"description": "..."}],
   "key_takeaways": [{"rank": 1, "text": "...", "star": true}],
+  "special_insights": {
+    "inflation": {
+      "title": "🔥 Lạm phát: ...",
+      "summary": "...",
+      "numbers_narrative": "...",
+      "news_items": [
+        {"title": "...", "url": "https://...", "source": "VnEconomy", "sentiment": "TIÊU CỰC", "insight": "..."}
+      ],
+      "cross_story": "..."
+    },
+    "trade": {},
+    "liquidity": {},
+    "production": {},
+    "retail": {}
+  },
   "_data_provenance": {
     "_rule": "Mọi số phải trace được tới file cụ thể trong sources_cache/",
     "sources_files": {
