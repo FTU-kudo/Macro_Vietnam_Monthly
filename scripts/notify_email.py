@@ -272,20 +272,36 @@ def main():
     parser.add_argument("--sources",   default="0",   help="Số nguồn available")
     parser.add_argument("--repo-url",  default="",    help="GitHub repo URL")
     parser.add_argument("--pdf-path",  default="",    help="Đường dẫn file PDF đính kèm")
-    parser.add_argument("--html-path", default="",    help="Đường dận file HTML đính kèm")
+    parser.add_argument("--html-path", default="",    help="Đường dẫn file HTML đính kèm")
+    parser.add_argument("--report",    default="",    help="Đường dẫn file report.json")
     args = parser.parse_args()
 
     pdf_path  = Path(args.pdf_path)  if args.pdf_path  else None
     html_path = Path(args.html_path) if args.html_path else None
+    
+    sources = args.sources
+    # Nếu có file report.json, ưu tiên lấy chính xác số nguồn thực tế từ file report.json để đồng bộ 100% với PDF/HTML
+    report_path = Path(args.report) if args.report else Path(f"vn-macro-monthly/{args.month}/report.json")
+    if report_path.exists():
+        try:
+            import json
+            with open(report_path, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                meta_sources = d.get("_meta", {}).get("sources_available")
+                if meta_sources is not None:
+                    sources = str(meta_sources)
+                    print(f"  🔍 Đồng bộ số nguồn từ {report_path}: {sources}/5 nguồn")
+        except Exception as e:
+            print(f"  ⚠️ Không đọc được sources_available từ {report_path}: {e}")
 
     if args.status == "success":
         has_pdf  = bool(pdf_path  and pdf_path.exists())
         has_html = bool(html_path and html_path.exists())
         subject, html = build_success_email(
-            args.month, args.sources, args.repo_url, has_pdf, has_html
+            args.month, sources, args.repo_url, has_pdf, has_html
         )
     else:
-        subject, html = build_fail_email(args.month, args.sources)
+        subject, html = build_fail_email(args.month, sources)
         pdf_path  = None
         html_path = None
 

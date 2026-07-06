@@ -45,7 +45,7 @@ jobs:
       report_month: ${{ steps.set-month.outputs.report_month }}
       report_filename: ${{ steps.set-month.outputs.report_filename }}
       preflight_status: ${{ steps.preflight.outputs.status }}
-      sources_found: ${{ steps.preflight.outputs.sources_found }}
+      sources_found: ${{ steps.extract-data.outputs.sources || steps.fetch-sources.outputs.fetched_sources || steps.preflight.outputs.sources_found }}
       artifact_name: ${{ steps.set-artifact.outputs.artifact_name }}
       skip_rest: ${{ steps.check-new-data.outputs.skip_rest }}
 
@@ -199,6 +199,7 @@ jobs:
       # ── FIX: đổi từ ANTHROPIC_API_KEY → GEMINI_API_KEY ──────────
       - name: Extract 41 indicators via Gemini API
         if: steps.check-existing.outputs.skip != 'true' && steps.check-new-data.outputs.skip_rest != 'true'
+        id: extract-data
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           REPORT_MONTH: ${{ env.REPORT_MONTH }}
@@ -207,7 +208,10 @@ jobs:
             --month "$REPORT_MONTH" \
             --cache-dir "vn-macro-monthly/$REPORT_MONTH/sources_cache" \
             --output "vn-macro-monthly/$REPORT_MONTH/report.json"
-          echo "✅ report.json generated"
+          SOURCES=$(python3 -c "import json; d=json.load(open('vn-macro-monthly/$REPORT_MONTH/report.json')); print(d.get('_meta', {}).get('sources_available', 0))" 2>/dev/null || echo "0")
+          echo "sources=$SOURCES" >> $GITHUB_OUTPUT
+          echo "FINAL_SOURCES=$SOURCES" >> $GITHUB_ENV
+          echo "✅ report.json generated ($SOURCES sources)"
 
       - name: Update history.json
         if: steps.check-existing.outputs.skip != 'true' && steps.check-new-data.outputs.skip_rest != 'true'
@@ -261,7 +265,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "⚠️ No changes to commit"
           else
-            git commit -m "📊 Auto: VN Macro Report ${{ env.REPORT_MONTH }} (${{ steps.preflight.outputs.sources_found }}/5 nguồn)"
+            git commit -m "📊 Auto: VN Macro Report ${{ env.REPORT_MONTH }} (${{ env.FINAL_SOURCES || steps.preflight.outputs.sources_found }}/5 nguồn)"
             git push
             echo "✅ Committed and pushed"
           fi
@@ -320,7 +324,8 @@ jobs:
             --sources "$SOURCES_FOUND" \
             --repo-url "$REPO_URL" \
             --pdf-path "vn-macro-monthly/$REPORT_MONTH/${FNAME}.pdf" \
-            --html-path "vn-macro-monthly/$REPORT_MONTH/${FNAME}.html"
+            --html-path "vn-macro-monthly/$REPORT_MONTH/${FNAME}.html" \
+            --report "vn-macro-monthly/$REPORT_MONTH/report.json"
 
       - name: Send FAILURE email
         if: needs.generate-report.result == 'failure' && needs.generate-report.outputs.skip_rest != 'true'
