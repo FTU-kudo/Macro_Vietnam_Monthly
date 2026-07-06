@@ -14,3 +14,10 @@ node_modules/
 # Python
 __pycache__/
 *.pyc
+
+# Secrets & Environments
+.env
+*.env
+*.env.*
+!.env.example
+
