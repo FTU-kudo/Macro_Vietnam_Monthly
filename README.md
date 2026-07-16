@@ -2,7 +2,7 @@
 
 **Nguồn tham khảo:** *https://github.com/Thanhtran-165/vimovietnam*
 
-Skill tạo **báo cáo vĩ mô VN monthly** toàn diện 41 chỉ số từ 5 nguồn chính thức (NSO + Customs + S&P PMI + VBMA + VNBA). Bao phủ 4 trụ cột: sản xuất + ngoại thương + tiền tệ + tài chính.
+Skill tạo **báo cáo vĩ mô VN monthly** toàn diện 41 chỉ số từ 5 nguồn chính thức (NSO + Customs + S&P PMI + VBMA + VNBA). Bao phủ 4 trụ cột: sản xuất + ngoại thương + tiền tệ + tài chính. Xem [tại đây](https://ftu-kudo.github.io/Macro_Vietnam_Monthly/).
 
 ## Cấu trúc skill
 
